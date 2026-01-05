@@ -1,7 +1,7 @@
 Config = {}
 Config.Debug = false -- True / False for Debug System
 
-Config.Framework = "qb" -- Pick your framework: "qb" or "esx" - Default: "qb"
+Config.Framework = "ox" -- Pick your framework: "qb", "esx" or "ox" - Default: "ox"
 
 -- Settings
 Config.ItemName = 'skateboard'
