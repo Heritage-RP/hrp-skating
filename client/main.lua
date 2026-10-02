@@ -289,7 +289,7 @@ function SkatingService:shouldRagdoll()
     local rotation = SkateboardEntity:getRotation()
     local x = rotation.x
     
-    if ((-60.0 < x and x > 60.0)) and SkateboardEntity:isInAir() and self.speed < 5.0 then
+    if (x < -60.0 or x > 60.0) and SkateboardEntity:isInAir() and self.speed < 5.0 then
         return true
     end
     if HasEntityCollidedWithAnything(self.player) and self.speed > 5.0 then
@@ -307,7 +307,6 @@ function SkatingService:connectPlayer(toggle)
         AttachEntityToEntity(self.player, SkateboardEntity.vehicle, 20, 
             0.0, 0, 0.7, 0.0, 0.0, -15.0, true, true, false, true, 1, true)
         SetEntityCollision(self.player, true, true)
-        TriggerServerEvent("astudios-skating:server:skate")
     else
         DetachEntity(self.player, false, false)
         AnimationController:stop(self.player, Animations.IDLE)
@@ -361,8 +360,8 @@ function SkatingService:pickupSkateboard()
     AttachEntityToEntity(SkateboardEntity.vehicle, ped, GetPedBoneIndex(ped, 28422),
         -0.1, 0.0, -0.2, 70.0, 0.0, 270.0, 1, 1, 0, 0, 2, 1)
     Wait(900)
+    -- the board is given back when SkatingService:start's loop ends
     self:clear()
-    TriggerServerEvent("astudios-skating:server:giveItem")
 end
 
 function SkatingService:clear()
@@ -396,21 +395,19 @@ function SkatingService:handleKeys(distance)
     TaskVehicleTempAction(SkateboardEntity.driverPed, SkateboardEntity.vehicle, 1, 1)
     ForceVehicleEngineAudio(SkateboardEntity.vehicle, 0)
     
-    CreateThread(function()
-        self.player = PlayerPedId()
-        Wait(1)
-        SetEntityInvincible(SkateboardEntity.vehicle, true)
-        StopCurrentPlayingAmbientSpeech(SkateboardEntity.driverPed)
-        
-        if self.connected then
-            self.speed = SkateboardEntity:getSpeed()
-            if self:shouldRagdoll() then
-                self:connectPlayer(false)
-                SetPedToRagdoll(self.player, 5000, 4000, 0, true, true, false)
-                self.connected = false
-            end
+    -- Runs inline: this is called every 5 ms, a thread per call was ~200 coroutines per second
+    self.player = PlayerPedId()
+    SetEntityInvincible(SkateboardEntity.vehicle, true)
+    StopCurrentPlayingAmbientSpeech(SkateboardEntity.driverPed)
+
+    if self.connected then
+        self.speed = SkateboardEntity:getSpeed()
+        if self:shouldRagdoll() then
+            self:connectPlayer(false)
+            SetPedToRagdoll(self.player, 5000, 4000, 0, true, true, false)
+            self.connected = false
         end
-    end)
+    end
     
     -- Handle movement
     MovementController:handleMovement(SkateboardEntity.driverPed, SkateboardEntity.vehicle, movement, overSpeed)
@@ -463,6 +460,11 @@ function SkatingService:start()
             TaskVehicleTempAction(SkateboardEntity.driverPed, SkateboardEntity.vehicle, 6, 2500)
         end
     end
+
+    -- Picked up, or the board entity disappeared: clean up and get the item back (the server only gives it back
+    -- to a player who has a board out, once)
+    if SkateboardEntity.vehicle then self:clear() end
+    TriggerServerEvent("astudios-skating:server:giveItem")
 end
 
 -- ============================================
@@ -472,7 +474,10 @@ RegisterNetEvent("astudios-skating:client:start", function()
     SkatingService:start()
 end)
 
-RegisterNetEvent("astudios-skating:client:skate", function(id)
-    local player = GetPlayerFromServerId(id)
-    local vehicle = GetEntityAttachedTo(GetPlayerPed(player))
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    if SkateboardEntity.vehicle then
+        DetachEntity(PlayerPedId(), false, false)
+        SkateboardEntity:destroy()
+    end
 end)

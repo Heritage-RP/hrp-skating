@@ -11,15 +11,22 @@ FrameworkAdapter.ox = {
     init = function()
         return exports.ox_inventory
     end,
+    -- Returns true only when the item was actually removed (the Lua export returns `true` or `false, reason`)
     removeItem = function(source, itemName, slot)
-        exports.ox_inventory:RemoveItem(source, itemName, 1, nil, slot)
+        return exports.ox_inventory:RemoveItem(source, itemName, 1, nil, slot) == true
     end,
     addItem = function(source, itemName)
         exports.ox_inventory:AddItem(source, itemName, 1)
     end,
     registerUsableItem = function(itemName, callback)
+        -- ox_inventory calls it as (event, item, inventory, slot, data); with `consume = 0` only 'usingItem' is sent.
+        -- Returning false cancels ox_inventory's own use flow: the board has already been taken out of the slot.
         exports('useSkateboardItem', function(event, item, inventory, slot, data)
-            callback(inventory.id, item, slot)
+            if event ~= 'usingItem' then return end
+            if inventory and type(inventory.id) == 'number' then
+                callback(inventory.id, item, slot)
+            end
+            return false
         end)
     end
 }
@@ -31,9 +38,7 @@ FrameworkAdapter.qb = {
     removeItem = function(source, itemName, slot)
         local QBCore = exports["qb-core"]:GetCoreObject()
         local Player = QBCore.Functions.GetPlayer(source)
-        if Player then
-            Player.Functions.RemoveItem(itemName, 1, slot)
-        end
+        return Player ~= nil and Player.Functions.RemoveItem(itemName, 1, slot) ~= false
     end,
     addItem = function(source, itemName)
         local QBCore = exports["qb-core"]:GetCoreObject()
@@ -57,9 +62,9 @@ FrameworkAdapter.esx = {
     removeItem = function(source, itemName, slot)
         local ESX = exports["es_extended"]:getSharedObject()
         local Player = ESX.GetPlayerFromId(source)
-        if Player then
-            Player.removeInventoryItem(itemName, 1)
-        end
+        if not Player then return false end
+        Player.removeInventoryItem(itemName, 1)
+        return true
     end,
     addItem = function(source, itemName)
         local ESX = exports["es_extended"]:getSharedObject()
@@ -80,22 +85,36 @@ FrameworkAdapter.esx = {
 local SkatingService = {}
 
 function SkatingService:new(adapter)
-    local instance = { adapter = adapter }
+    -- deployed[source] = true while that player's board is out of their inventory (one board at a time)
+    local instance = { adapter = adapter, deployed = {} }
     setmetatable(instance, { __index = self })
     return instance
 end
 
 function SkatingService:useItem(source, item, slot)
-    self.adapter.removeItem(source, Config.ItemName, slot)
+    if self.deployed[source] then return end
+    if not self.adapter.removeItem(source, Config.ItemName, slot) then return end
+    self.deployed[source] = true
     TriggerClientEvent('astudios-skating:client:start', source, item)
 end
 
+-- Gives the board back only to a player who has one out: the client can't create skateboards.
 function SkatingService:giveItem(source)
+    if not self.deployed[source] then return end
+    self.deployed[source] = nil
     self.adapter.addItem(source, Config.ItemName)
 end
 
-function SkatingService:broadcastSkate(source)
-    TriggerClientEvent("astudios-skating:client:skate", -1, source)
+-- The board is lost with the player (no inventory to put it back into).
+function SkatingService:forget(source)
+    self.deployed[source] = nil
+end
+
+-- Resource stop: every board out is put back in its owner's inventory.
+function SkatingService:returnAll()
+    for source in pairs(self.deployed) do
+        self:giveItem(source)
+    end
 end
 
 -- Initialize the correct adapter (Interface Segregation)
@@ -118,7 +137,11 @@ RegisterNetEvent("astudios-skating:server:giveItem", function()
     skatingService:giveItem(source)
 end)
 
-RegisterServerEvent("astudios-skating:server:skate", function()
-    local source = source
-    skatingService:broadcastSkate(source)
+AddEventHandler('playerDropped', function()
+    skatingService:forget(source)
+end)
+
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= GetCurrentResourceName() then return end
+    skatingService:returnAll()
 end)
