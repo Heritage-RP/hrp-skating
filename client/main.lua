@@ -24,7 +24,7 @@ end
 -- Get the appropriate notification function
 local notify = NotificationAdapter[Config.Framework]
 if not notify then
-    print("^1[astudios-skating] ::^0 Unsupported framework: " .. tostring(Config.Framework))
+    HrpLog.error('unsupported framework', { framework = tostring(Config.Framework) })
     return
 end
 

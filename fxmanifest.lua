@@ -15,6 +15,7 @@ version '1.0.0'
 lua54 'yes'
 
 shared_scripts {
+  '@hrp-metrics/lib/log.lua', -- HrpLog: structured logs (PRODUCTION-SERVER docs/dev/logs.md)
   '@ox_lib/init.lua',
   'shared/*.lua',
 }
