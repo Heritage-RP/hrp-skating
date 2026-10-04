@@ -1,8 +1,7 @@
 --------------------------------------
 --<!>-- ASTUDIOS | DEVELOPMENT --<!>--
 --------------------------------------
-print("^2[astudios-skating] ::^0 Started")
-print("^2[astudios-skating] ::^0 Developed by ASTUDIOS | DEVELOPMENT")
+HrpLog.debug('started (ASTUDIOS | DEVELOPMENT)')
 
 -- Framework Adapters (Single Responsibility + Open/Closed Principle)
 local FrameworkAdapter = {}
@@ -120,7 +119,7 @@ end
 -- Initialize the correct adapter (Interface Segregation)
 local adapter = FrameworkAdapter[Config.Framework]
 if not adapter then
-    print("^1[astudios-skating] ::^0 Unsupported framework: " .. tostring(Config.Framework))
+    HrpLog.error('unsupported framework', { framework = tostring(Config.Framework) })
     return
 end
 
