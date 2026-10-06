@@ -307,11 +307,13 @@ function SkatingService:connectPlayer(toggle)
         AttachEntityToEntity(self.player, SkateboardEntity.vehicle, 20, 
             0.0, 0, 0.7, 0.0, 0.0, -15.0, true, true, false, true, 1, true)
         SetEntityCollision(self.player, true, true)
+        HrpLog.business.debug('got on the skateboard')
     else
         DetachEntity(self.player, false, false)
         AnimationController:stop(self.player, Animations.IDLE)
         AnimationController:stop(PlayerPedId(), Animations.CROUCH)
         TaskVehicleTempAction(SkateboardEntity.driverPed, SkateboardEntity.vehicle, 3, 1)
+        if self.connected then HrpLog.business.debug('got off the skateboard') end
     end
     self.connected = toggle
 end
@@ -333,6 +335,7 @@ function SkatingService:handleJump()
     AnimationController:stop(PlayerPedId(), Animations.CROUCH)
     
     if self.connected then
+        HrpLog.business.debug('skateboard jump', { height = boosting })
         SkateboardEntity:setVelocity(vel.x, vel.y, vel.z + boosting)
         AnimationController:play(self.player, Animations.IDLE, 8.0, 2.0, -1, 1, 1.0)
     end
