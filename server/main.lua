@@ -94,6 +94,7 @@ function SkatingService:useItem(source, item, slot)
     if self.deployed[source] then return end
     if not self.adapter.removeItem(source, Config.ItemName, slot) then return end
     self.deployed[source] = true
+    HrpLog.business.info('skateboard placed', { source = source })
     TriggerClientEvent('astudios-skating:client:start', source, item)
 end
 
@@ -102,6 +103,7 @@ function SkatingService:giveItem(source)
     if not self.deployed[source] then return end
     self.deployed[source] = nil
     self.adapter.addItem(source, Config.ItemName)
+    HrpLog.business.info('skateboard picked up', { source = source })
 end
 
 -- The board is lost with the player (no inventory to put it back into).
