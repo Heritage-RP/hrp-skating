@@ -451,6 +451,16 @@ function SkatingService:start()
     
     while SkateboardEntity:exists() and DoesEntityExist(SkateboardEntity.driverPed) do
         Wait(5)
+
+        -- Owner died: put the board away (#29 — a dead owner could neither pick the board up
+        -- nor take out another one; the item comes back below when the loop ends)
+        if IsPedDeadOrDying(PlayerPedId(), true) then
+            self.player = PlayerPedId()
+            if self.connected then self:connectPlayer(false) end
+            self:clear()
+            break
+        end
+
         local playerCoords = GetEntityCoords(PlayerPedId())
         local boardCoords = SkateboardEntity:getCoords()
         local distance = #(playerCoords - boardCoords)
