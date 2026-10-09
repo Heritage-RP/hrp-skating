@@ -1,0 +1,7 @@
+{
+  "locale": "fr",
+  "itemName": "skateboard",
+  "maxSpeedKmh": 40,
+  "maxJumpHeight": 5,
+  "loseConnectionDistance": 2
+}
