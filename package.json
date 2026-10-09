@@ -1,0 +1,37 @@
+{
+	"name": "hrp-skating",
+	"author": "Heritage-RP",
+	"version": "1.0.0",
+	"license": "",
+	"description": "Skateboard: put the board down, ride it, jump, pick it up (fork of astudios-skating, ported to TypeScript — PRODUCTION-SERVER#223)",
+	"type": "module",
+	"scripts": {
+		"build": "node scripts/build.js",
+		"watch": "node scripts/build.js --watch",
+		"format": "pnpm biome format --write",
+		"lint": "pnpm biome lint --write",
+		"test": "vitest run"
+	},
+	"keywords": [
+		"fivem"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/Heritage-RP/hrp-skating.git"
+	},
+	"bugs": "https://github.com/Heritage-RP/hrp-skating/issues",
+	"devDependencies": {
+		"@citizenfx/client": "latest",
+		"@citizenfx/server": "latest",
+		"@communityox/fx-utils": "^0.0.4",
+		"@jgoz/esbuild-plugin-typecheck": "^4.0.3",
+		"@types/node": "^22.13.9",
+		"esbuild": "^0.25.0",
+		"typescript": "^5.8.2",
+		"vitest": "^2.1.9"
+	},
+	"dependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@communityox/ox_lib": "latest"
+	}
+}
