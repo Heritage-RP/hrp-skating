@@ -12,6 +12,8 @@ export const MODEL = {
 
 /** SKEL_R_Hand */
 export const RIGHT_HAND = 28422;
+/** Root bone of an entity (the board prop is attached under the BMX's origin). */
+const ROOT_BONE = 0;
 
 const ENTITY_TIMEOUT = 10000;
 
@@ -51,23 +53,10 @@ export class Skateboard {
     SetEntityNoCollisionEntity(vehicle, playerPed, false);
     SetEntityCollision(vehicle, false, true);
     SetEntityVisible(vehicle, false, false);
-    AttachEntityToEntity(
-      board,
-      vehicle,
-      GetPedBoneIndex(playerPed, RIGHT_HAND),
-      0,
-      0,
-      -0.4,
-      0,
-      0,
-      90,
-      false,
-      true,
-      true,
-      true,
-      1,
-      true,
-    );
+    SetEntityInvincible(vehicle, true);
+    ForceVehicleEngineAudio(vehicle, null as unknown as string); // nil in the Lua original: no engine sound
+    // Bone index on the BMX's own skeleton: a ped bone index (as in the Lua original) meant an arbitrary bone there
+    AttachEntityToEntity(board, vehicle, ROOT_BONE, 0, 0, -0.4, 0, 0, 90, false, true, true, true, 1, true);
 
     const driver = spawnDriver();
     await waitExists(driver);
@@ -75,6 +64,8 @@ export class Skateboard {
     SetEntityInvincible(driver, true);
     SetEntityVisible(driver, false, false);
     FreezeEntityPosition(driver, true);
+    StopCurrentPlayingAmbientSpeech(driver);
+    StopPedSpeaking(driver, true);
     TaskWarpPedIntoVehicle(driver, vehicle, -1);
     await waitFor(
       () => (IsPedInVehicle(driver, vehicle, false) ? true : undefined),
