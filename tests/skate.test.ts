@@ -1,4 +1,5 @@
-import { ACTION, driveOrder, jumpBoost, kmh, shouldFall } from '@common/skate';
+import { isBoardNetIds } from '@common/events';
+import { ACTION, JumpTracker, driveOrder, inFront, isRiderDown, jumpBoost, kmh, shouldFall } from '@common/skate';
 import { describe, expect, it } from 'vitest';
 
 const keys = (forward = false, backward = false, left = false, right = false) => ({ forward, backward, left, right });
@@ -65,5 +66,63 @@ describe('shouldFall', () => {
 describe('kmh', () => {
   it('converts m/s', () => {
     expect(kmh(10)).toBe(36);
+  });
+});
+
+describe('JumpTracker (Space held no longer blocks the ride loop)', () => {
+  it('crouches at the press, answers at once every frame while held, jumps at the release', () => {
+    const jump = new JumpTracker(5);
+    expect(jump.update(true, false, 1000)).toEqual({ kind: 'crouch' });
+    // Held for 10 frames: each call returns at once with nothing to do — the loop keeps driving and checking falls
+    for (let t = 1010; t < 1110; t += 10) expect(jump.update(true, false, t)).toBeNull();
+    expect(jump.holding).toBe(true);
+    expect(jump.update(false, false, 1125)).toEqual({ kind: 'jump', boost: 2.5 });
+    expect(jump.holding).toBe(false);
+  });
+
+  it('caps the boost and cancels a release in the air', () => {
+    const jump = new JumpTracker(5);
+    jump.update(true, false, 0);
+    expect(jump.update(false, false, 5000)).toEqual({ kind: 'jump', boost: 5 });
+    jump.update(true, false, 6000);
+    expect(jump.update(false, true, 6100)).toEqual({ kind: 'cancel' });
+  });
+
+  it('does not start a jump in the air, and forgets a press on reset', () => {
+    const jump = new JumpTracker(5);
+    expect(jump.update(true, true, 0)).toBeNull();
+    expect(jump.update(true, false, 10)).toEqual({ kind: 'crouch' });
+    jump.reset();
+    expect(jump.update(false, false, 20)).toBeNull();
+  });
+});
+
+describe('isRiderDown', () => {
+  it('counts the hrp-life-and-death downed state, not only the death frame', () => {
+    expect(isRiderDown(false, true)).toBe(true);
+    expect(isRiderDown(true, undefined)).toBe(true);
+    expect(isRiderDown(false, undefined)).toBe(false);
+    expect(isRiderDown(false, 'true')).toBe(false);
+  });
+});
+
+describe('inFront', () => {
+  it('follows the GTA heading (0 north, counter-clockwise)', () => {
+    const [nx, ny] = inFront(0, 0, 0, 2);
+    expect([nx, ny].map((v) => Math.round(v * 1000) / 1000)).toEqual([0, 2]);
+    const [ex, ey] = inFront(10, 10, 270, 2);
+    expect(ex).toBeCloseTo(12);
+    expect(ey).toBeCloseTo(10);
+  });
+});
+
+describe('isBoardNetIds', () => {
+  it('accepts three positive integer net ids only', () => {
+    expect(isBoardNetIds({ vehicle: 1, board: 2, driver: 3 })).toBe(true);
+    expect(isBoardNetIds({ vehicle: 1, board: 2 })).toBe(false);
+    expect(isBoardNetIds({ vehicle: 1, board: 0, driver: 3 })).toBe(false);
+    expect(isBoardNetIds({ vehicle: 1.5, board: 2, driver: 3 })).toBe(false);
+    expect(isBoardNetIds(null)).toBe(false);
+    expect(isBoardNetIds('item')).toBe(false);
   });
 });

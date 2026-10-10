@@ -6,6 +6,8 @@
 import Config from '@common/config';
 import { EVENT } from '@common/events';
 import { log } from '@common/log';
+import { DRIVER_MODEL, MODEL_NAME } from '@common/skate';
+import { BoardSpawner, type EntityNatives } from './entities';
 import { type BoardInventory, type PendingBoards, SkatingService } from './service';
 
 /** Lua exports returning several values (`false, 'reason'`) reach JS as an array. */
@@ -27,7 +29,36 @@ const pending: PendingBoards = {
   },
 };
 
-const service = new SkatingService(inventory, pending, log);
+/** Ped type given to the invisible driver (as in the original CreatePed). */
+const DRIVER_PED_TYPE = 12;
+/** Orphan mode 0: the server deletes the entity once no longer relevant (owner gone) — a leftover never stays. */
+const DELETE_WHEN_NOT_RELEVANT = 0;
+
+/**
+ * Server natives behind the board's entities (#310: sv_entityLockdown refuses network entities created by client
+ * scripts). CreateVehicleServerSetter is the reliable server vehicle creation (no RPC to a client).
+ */
+const natives: EntityNatives = {
+  pedOf: (src) => GetPlayerPed(String(src)),
+  coords: (entity) => GetEntityCoords(entity),
+  heading: (entity) => GetEntityHeading(entity),
+  createVehicle: (x, y, z, heading) =>
+    CreateVehicleServerSetter(GetHashKey(MODEL_NAME.vehicle), 'bike', x, y, z, heading),
+  createBoard: (x, y, z) => CreateObjectNoOffset(GetHashKey(MODEL_NAME.board), x, y, z, true, true, false),
+  createDriver: (vehicle) => CreatePedInsideVehicle(vehicle, DRIVER_PED_TYPE, DRIVER_MODEL, -1, true, false),
+  exists: (entity) => entity !== 0 && DoesEntityExist(entity),
+  owner: (entity) => NetworkGetEntityOwner(entity),
+  netId: (entity) => NetworkGetNetworkIdFromEntity(entity),
+  prepare: (entity) => {
+    SetEntityOrphanMode(entity, DELETE_WHEN_NOT_RELEVANT);
+    // The rider takes control of all three (drives the BMX, attaches the board): never filtered out
+    SetEntityIgnoreRequestControlFilter(entity, true);
+  },
+  remove: (entity) => DeleteEntity(entity),
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+};
+
+const service = new SkatingService(inventory, pending, new BoardSpawner(natives), log);
 
 const oxCoreStarted = () => GetResourceState('ox_core') === 'started';
 
@@ -61,14 +92,22 @@ interface InventoryRef {
 
 /**
  * ox_inventory calls it as (event, item, inventory, slot, data); with `consume = 0` only 'usingItem' is sent.
- * Returning false cancels ox_inventory's own use flow: the board has already been taken out of the slot.
+ * Returning false cancels ox_inventory's own use flow: the board is taken out of the slot by the service, its entities
+ * created by the server, then the client puts it down.
  */
 exports(
   'useSkateboardItem',
-  (event: string, item: unknown, inv: InventoryRef | undefined, slot: number | undefined) => {
+  (event: string, _item: unknown, inv: InventoryRef | undefined, slot: number | undefined) => {
     if (event !== 'usingItem') return;
     const src = inv?.id;
-    if (typeof src === 'number' && service.useItem(src, slot, activeCharId(src))) emitNet(EVENT.start, src, item);
+    if (typeof src === 'number') {
+      service
+        .useItem(src, slot, activeCharId(src))
+        .then((netIds) => {
+          if (netIds) emitNet(EVENT.start, src, netIds);
+        })
+        .catch((err) => log.error(err instanceof Error ? err : String(err)));
+    }
     return false;
   },
 );

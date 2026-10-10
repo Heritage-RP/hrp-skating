@@ -11,14 +11,21 @@ in the inventory). A dead owner's board is put away automatically.
 ## How it works
 
 - **Server** (`src/server/`): `useSkateboardItem` export, called by ox_inventory (`server.export` of the item, `consume
-  = 0`) — takes the board out of the slot and tells the client to put it down. It gives the item back only to a player
-  who has a board out, once (the client can't create skateboards). Boards out go back to their owners on resource stop;
-  a player who leaves loses theirs.
-- **Client** (`src/client/`): an invisible BMX driven by an invisible ped (`TASK_VEHICLE_TEMP_ACTION`) carries the board
-  prop (`stream/p_defilied_ragdoll_01_s.ydr`).
-- **Common** (`src/common/skate.ts`): controls → driving action, jump height, fall rules — unit-tested.
+  = 0`) — takes the board out of the slot, **creates the board's networked entities** (`entities.ts`: BMX by
+  `CreateVehicleServerSetter`, board prop, driver by `CreatePedInsideVehicle`; it waits until each has an owner) and
+  sends their net ids to the client. Client scripts never create network entities, so the resource works with
+  `sv_entityLockdown relaxed` (PRODUCTION-SERVER#310). The item comes back (and the server deletes the entities) only
+  for a player who has a board out, once: picked up, character change (`ox:playerLogout`), disconnection or crash (owed
+  to the character, KVP `owed:<charId>`, given at its next login), resource stop.
+- **Client** (`src/client/`): takes control of the three entities, makes the BMX and its driver invisible, attaches
+  the board prop under the BMX and drives it (`TASK_VEHICLE_TEMP_ACTION`). Space is read once per loop turn
+  (`JumpTracker`), never awaited.
+- **Common** (`src/common/skate.ts`): controls → driving action, jump, fall rules, spawn point — unit-tested.
+- **Tests** (`tests/`): pure rules, `SkatingService`, `BoardSpawner`, and both composition roots (`src/server/index.ts`,
+  `src/client/index.ts`) bundled with esbuild and run in a VM with faked natives.
 
-Net events (names of the original, unchanged): `astudios-skating:client:start`, `astudios-skating:server:giveItem`.
+Net events (names of the original): `astudios-skating:client:start` (payload: `{ vehicle, board, driver }` net ids),
+`astudios-skating:server:giveItem`.
 Business logs: `skateboard placed`, `skateboard picked up` (server, info), `got on the skateboard`, `got off the
 skateboard`, `skateboard jump` (client, debug) — used by the hrp-bounty `skateboard` bounty.
 

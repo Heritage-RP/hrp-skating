@@ -4,10 +4,10 @@
  */
 
 import Config from '@common/config';
-import { EVENT } from '@common/events';
+import { type BoardNetIds, EVENT, isBoardNetIds } from '@common/events';
 import Locale from '@common/locale';
 import { log } from '@common/log';
-import { ACTION, CONTROL, type Movement, driveOrder, jumpBoost, shouldFall } from '@common/skate';
+import { ACTION, CONTROL, JumpTracker, type Movement, driveOrder, isRiderDown, shouldFall } from '@common/skate';
 import { initLocale, notify, requestAnimDict, requestModel, sleep } from '@communityox/ox_lib/client';
 import { MODEL, Skateboard } from './board';
 
@@ -27,6 +27,7 @@ const ANIM = {
 /** Distance (m) under which the board can be picked up or got on. */
 const REACH = 1.5;
 
+/** Loaded ahead: the server creates the entities (#310), this client streams them in sooner. */
 const MODELS = [MODEL.vehicle, MODEL.driver, MODEL.board];
 const DICTS = [ANIM.pickup.dict, ANIM.idle.dict, ANIM.crouch.dict];
 
@@ -62,12 +63,12 @@ let board: Skateboard | null = null;
 let busy = false;
 let connected = false;
 let player = 0;
-/** Space held on the board: when it was pressed (game timer), or null. The jump is computed at the release. */
-let jumpPressedAt: number | null = null;
+/** Space held on the board: the jump is computed at the release, never awaited. */
+const jumpKey = new JumpTracker(Config.maxJumpHeight);
 
 /** Dead, or downed by hrp-life-and-death (which resurrects the ped at once: IsPedDeadOrDying may last a frame). */
 function down(ped: number): boolean {
-  return IsPedDeadOrDying(ped, true) || LocalPlayer.state.isDowned === true;
+  return isRiderDown(IsPedDeadOrDying(ped, true), LocalPlayer.state.isDowned);
 }
 
 function connect(toggle: boolean): void {
@@ -78,7 +79,7 @@ function connect(toggle: boolean): void {
     SetEntityCollision(player, true, true);
     log.business.debug('got on the skateboard');
   } else {
-    jumpPressedAt = null;
+    jumpKey.reset();
     DetachEntity(player, false, false);
     stopAnim(player, ANIM.idle);
     stopAnim(PlayerPedId(), ANIM.crouch);
@@ -88,13 +89,13 @@ function connect(toggle: boolean): void {
   connected = toggle;
 }
 
-/** Deletes the board; the item comes back when the ride loop ends. */
+/** Lets go of the board; the item comes back (and the server deletes the entities) when the ride loop ends. */
 function clear(): void {
-  board?.destroy();
+  board?.release();
   board = null;
   unloadAssets();
   connected = false;
-  jumpPressedAt = null;
+  jumpKey.reset();
   SetPedRagdollOnCollision(player, false);
 }
 
@@ -123,24 +124,18 @@ async function pickUp(current: Skateboard): Promise<void> {
  */
 function jump(current: Skateboard): void {
   if (!connected) return;
-  const pressed = IsControlPressed(0, CONTROL.jump);
-
-  if (jumpPressedAt === null) {
-    if (!pressed || current.inAir()) return;
-    jumpPressedAt = GetGameTimer();
+  const step = jumpKey.update(IsControlPressed(0, CONTROL.jump), current.inAir(), GetGameTimer());
+  if (step === null) return;
+  if (step.kind === 'crouch') {
     playAnim(PlayerPedId(), ANIM.crouch, 5, 8, -1, 0, 0);
     return;
   }
-  if (pressed) return;
 
-  const boost = jumpBoost(GetGameTimer() - jumpPressedAt, Config.maxJumpHeight);
-  jumpPressedAt = null;
   stopAnim(PlayerPedId(), ANIM.crouch);
-  if (current.inAir()) return;
-
+  if (step.kind === 'cancel') return;
   const [vx, vy, vz] = current.velocity();
-  log.business.debug('skateboard jump', { height: boost });
-  current.setVelocity(vx, vy, vz + boost);
+  log.business.debug('skateboard jump', { height: step.boost });
+  current.setVelocity(vx, vy, vz + step.boost);
   playAnim(player, ANIM.idle, 8, 2, -1, 1, 1);
 }
 
@@ -171,7 +166,7 @@ async function handleKeys(current: Skateboard, distance: number): Promise<void> 
       boardInAir: current.inAir(),
       speed: current.speed(),
       riderCollided: HasEntityCollidedWithAnything(player),
-      riderDead: IsPedDeadOrDying(player, false) || LocalPlayer.state.isDowned === true,
+      riderDead: isRiderDown(IsPedDeadOrDying(player, false), LocalPlayer.state.isDowned),
     });
     if (fall) {
       connect(false);
@@ -213,7 +208,7 @@ async function ride(current: Skateboard): Promise<void> {
   }
 }
 
-async function start(): Promise<void> {
+async function start(ids: BoardNetIds): Promise<void> {
   if (busy) return;
   busy = true;
   player = PlayerPedId();
@@ -221,10 +216,7 @@ async function start(): Promise<void> {
 
   try {
     await loadAssets();
-    const ped = PlayerPedId();
-    const [x, y, z] = GetEntityCoords(ped, false);
-    const [fx, fy, fz] = GetEntityForwardVector(ped);
-    const current = await Skateboard.create(x + fx * 2, y + fy * 2, z + fz * 2, GetEntityHeading(ped));
+    const current = await Skateboard.fromNetIds(ids);
     board = current;
     await putDown(current);
     await ride(current);
@@ -239,8 +231,9 @@ async function start(): Promise<void> {
   emitNet(EVENT.giveItem);
 }
 
-onNet(EVENT.start, () => {
-  start().catch((err) => log.error(err instanceof Error ? err : String(err)));
+onNet(EVENT.start, (ids: unknown) => {
+  if (!isBoardNetIds(ids)) return;
+  start(ids).catch((err) => log.error(err instanceof Error ? err : String(err)));
 });
 
 // Character change: the server gives the board back to the character leaving; the next one must not find it out.
@@ -254,6 +247,6 @@ on('ox:playerLogout', () => {
 on('onResourceStop', (resource: string) => {
   if (resource !== GetCurrentResourceName() || !board) return;
   DetachEntity(PlayerPedId(), false, false);
-  board.destroy();
+  board.release(); // the server deletes the entities on its own resource stop
   board = null;
 });
