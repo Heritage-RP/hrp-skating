@@ -62,6 +62,13 @@ let board: Skateboard | null = null;
 let busy = false;
 let connected = false;
 let player = 0;
+/** Space held on the board: when it was pressed (game timer), or null. The jump is computed at the release. */
+let jumpPressedAt: number | null = null;
+
+/** Dead, or downed by hrp-life-and-death (which resurrects the ped at once: IsPedDeadOrDying may last a frame). */
+function down(ped: number): boolean {
+  return IsPedDeadOrDying(ped, true) || LocalPlayer.state.isDowned === true;
+}
 
 function connect(toggle: boolean): void {
   if (!board) return;
@@ -71,6 +78,7 @@ function connect(toggle: boolean): void {
     SetEntityCollision(player, true, true);
     log.business.debug('got on the skateboard');
   } else {
+    jumpPressedAt = null;
     DetachEntity(player, false, false);
     stopAnim(player, ANIM.idle);
     stopAnim(PlayerPedId(), ANIM.crouch);
@@ -86,6 +94,7 @@ function clear(): void {
   board = null;
   unloadAssets();
   connected = false;
+  jumpPressedAt = null;
   SetPedRagdollOnCollision(player, false);
 }
 
@@ -108,25 +117,31 @@ async function pickUp(current: Skateboard): Promise<void> {
   clear();
 }
 
-/** Space held: crouch, then jump higher the longer it was held. */
-async function jump(current: Skateboard): Promise<void> {
-  if (!connected || !IsControlPressed(0, CONTROL.jump) || current.inAir()) return;
+/**
+ * Space held: crouch, then jump higher the longer it was held. Checked once per loop turn, never awaited: riding, the
+ * speed cap and falls keep being evaluated while the key is held.
+ */
+function jump(current: Skateboard): void {
+  if (!connected) return;
+  const pressed = IsControlPressed(0, CONTROL.jump);
+
+  if (jumpPressedAt === null) {
+    if (!pressed || current.inAir()) return;
+    jumpPressedAt = GetGameTimer();
+    playAnim(PlayerPedId(), ANIM.crouch, 5, 8, -1, 0, 0);
+    return;
+  }
+  if (pressed) return;
+
+  const boost = jumpBoost(GetGameTimer() - jumpPressedAt, Config.maxJumpHeight);
+  jumpPressedAt = null;
+  stopAnim(PlayerPedId(), ANIM.crouch);
+  if (current.inAir()) return;
 
   const [vx, vy, vz] = current.velocity();
-  playAnim(PlayerPedId(), ANIM.crouch, 5, 8, -1, 0, 0);
-  let held = 0;
-  while (IsControlPressed(0, CONTROL.jump)) {
-    await sleep(10);
-    held += 10;
-  }
-  const boost = jumpBoost(held, Config.maxJumpHeight);
-  stopAnim(PlayerPedId(), ANIM.crouch);
-
-  if (connected && board === current) {
-    log.business.debug('skateboard jump', { height: boost });
-    current.setVelocity(vx, vy, vz + boost);
-    playAnim(player, ANIM.idle, 8, 2, -1, 1, 1);
-  }
+  log.business.debug('skateboard jump', { height: boost });
+  current.setVelocity(vx, vy, vz + boost);
+  playAnim(player, ANIM.idle, 8, 2, -1, 1, 1);
 }
 
 async function handleKeys(current: Skateboard, distance: number): Promise<void> {
@@ -148,11 +163,7 @@ async function handleKeys(current: Skateboard, distance: number): Promise<void> 
 
   const overSpeed = current.speed() > Config.maxSpeedKmh;
   current.drive(ACTION.idle, 1);
-  ForceVehicleEngineAudio(current.vehicle, null as unknown as string); // nil in the Lua original: no engine sound
-
   player = PlayerPedId();
-  SetEntityInvincible(current.vehicle, true);
-  StopCurrentPlayingAmbientSpeech(current.driver);
 
   if (connected) {
     const fall = shouldFall({
@@ -160,7 +171,7 @@ async function handleKeys(current: Skateboard, distance: number): Promise<void> 
       boardInAir: current.inAir(),
       speed: current.speed(),
       riderCollided: HasEntityCollidedWithAnything(player),
-      riderDead: IsPedDeadOrDying(player, false),
+      riderDead: IsPedDeadOrDying(player, false) || LocalPlayer.state.isDowned === true,
     });
     if (fall) {
       connect(false);
@@ -174,15 +185,16 @@ async function handleKeys(current: Skateboard, distance: number): Promise<void> 
   const released = IsControlJustReleased(0, CONTROL.forward) || IsControlJustReleased(0, CONTROL.backward);
   if (released && !overSpeed) current.drive(ACTION.brake, 2500);
 
-  await jump(current);
+  jump(current);
 }
 
 async function ride(current: Skateboard): Promise<void> {
   while (board === current && current.exists()) {
     await sleep(5);
 
-    // Owner died: put the board away (#29 — a dead owner could neither pick the board up nor take out another one)
-    if (IsPedDeadOrDying(PlayerPedId(), true)) {
+    // Owner died or downed: put the board away (#29 — a dead owner could neither pick the board up nor take out
+    // another one)
+    if (down(PlayerPedId())) {
       player = PlayerPedId();
       if (connected) connect(false);
       clear();
@@ -229,6 +241,14 @@ async function start(): Promise<void> {
 
 onNet(EVENT.start, () => {
   start().catch((err) => log.error(err instanceof Error ? err : String(err)));
+});
+
+// Character change: the server gives the board back to the character leaving; the next one must not find it out.
+on('ox:playerLogout', () => {
+  if (!board) return;
+  player = PlayerPedId();
+  if (connected) connect(false);
+  clear();
 });
 
 on('onResourceStop', (resource: string) => {
