@@ -1,6 +1,6 @@
 import type { BoardNetIds } from '@common/events';
 import type { Logger } from '@heritage-rp/lib/log';
-import type { BoardEntities } from './entities';
+import type { BoardEntities, SpawnResult } from './entities';
 
 /** Inventory operations on the skateboard item (ox_inventory in game, a fake in tests). */
 export interface BoardInventory {
@@ -21,8 +21,8 @@ export interface PendingBoards {
 
 /** The board's networked entities, created and deleted by the server (#310; `BoardSpawner` in game). */
 export interface BoardWorld {
-  /** null when the entities could not be created (nothing is left behind then). */
-  spawn(src: number): Promise<BoardEntities | null>;
+  /** The entities, or which one could not be created (nothing is left behind then). */
+  spawn(src: number): Promise<SpawnResult>;
   netIds(entities: BoardEntities): BoardNetIds;
   despawn(entities: BoardEntities): void;
 }
@@ -60,19 +60,19 @@ export class SkatingService {
     this.deployed.set(src, out);
     this.log.business.info('skateboard placed', { source: src, charId });
 
-    const entities = await this.world.spawn(src);
+    const spawned = await this.world.spawn(src);
     if (this.deployed.get(src) !== out) {
       // Given back while the entities were being created (logout, disconnection, resource stop)
-      if (entities) this.world.despawn(entities);
+      if ('entities' in spawned) this.world.despawn(spawned.entities);
       return null;
     }
-    if (!entities) {
-      this.log.warn('skateboard entities could not be created', { source: src, charId });
+    if ('failed' in spawned) {
+      this.log.warn('skateboard entities could not be created', { source: src, charId, failed: spawned.failed });
       this.giveBack(src, 'skateboard returned (entities not created)');
       return null;
     }
-    out.entities = entities;
-    return this.world.netIds(entities);
+    out.entities = spawned.entities;
+    return this.world.netIds(spawned.entities);
   }
 
   /** The board was picked up (or vanished): delete its entities and give it back to a player who has one out. */

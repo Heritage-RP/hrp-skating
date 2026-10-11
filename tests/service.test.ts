@@ -8,9 +8,9 @@ function setup(removes = true) {
   let spawns = true;
   const world = {
     spawn: vi.fn<BoardWorld['spawn']>(async () => {
-      if (!spawns) return null;
+      if (!spawns) return { ok: false, failed: 'driver' };
       nextEntity += 3;
-      return { vehicle: nextEntity, board: nextEntity + 1, driver: nextEntity + 2 };
+      return { ok: true, entities: { vehicle: nextEntity, board: nextEntity + 1, driver: nextEntity + 2 } };
     }),
     netIds: vi.fn<BoardWorld['netIds']>((e: BoardEntities) => ({
       vehicle: e.vehicle * 10,

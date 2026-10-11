@@ -20,6 +20,7 @@ function world(opts: { ped?: number; ownerAfter?: Partial<Record<'vehicle' | 'bo
     createVehicle: vi.fn<EntityNatives['createVehicle']>(() => create('vehicle')),
     createBoard: vi.fn<EntityNatives['createBoard']>(() => create('board')),
     createDriver: vi.fn<EntityNatives['createDriver']>(() => create('driver')),
+    seat: vi.fn<EntityNatives['seat']>(),
     exists: vi.fn((entity: number) => entity === 42 || alive.has(entity)),
     owner: vi.fn((entity: number) => {
       const count = (polls.get(entity) ?? 0) + 1;
@@ -41,18 +42,25 @@ function world(opts: { ped?: number; ownerAfter?: Partial<Record<'vehicle' | 'bo
 describe('BoardSpawner (#310: board entities created by the server)', () => {
   it('creates the BMX, the board and its driver 2 m in front of the player, once each has an owner', async () => {
     const { natives, spawner } = world({ ownerAfter: { vehicle: 3 } });
-    const entities = await spawner.spawn(1);
-    expect(entities).toEqual({ vehicle: 501, board: 502, driver: 503 });
+    const result = await spawner.spawn(1);
+    expect(result).toEqual({ ok: true, entities: { vehicle: 501, board: 502, driver: 503 } });
+    if (!('entities' in result)) throw new Error('not spawned');
+    const { entities } = result;
     // Heading 90 (west): 2 m towards -X
     const [x, y, z, heading] = natives.createVehicle.mock.calls[0];
     expect(x).toBeCloseTo(98);
     expect(y).toBeCloseTo(200);
     expect([z, heading]).toEqual([30, 90]);
-    expect(natives.createDriver).toHaveBeenCalledWith(501);
+    // The driver is created at the BMX (a position: FXServer routes the RPC to the closest client), then seated
+    const [dx, dy, dz, dheading] = natives.createDriver.mock.calls[0];
+    expect(dx).toBeCloseTo(98);
+    expect(dy).toBeCloseTo(200);
+    expect([dz, dheading]).toEqual([30, 90]);
+    expect(natives.seat).toHaveBeenCalledWith(503, 501);
     // Waited for the vehicle's owner before creating the rest
     expect(natives.sleep).toHaveBeenCalledTimes(3);
     expect(natives.prepare.mock.calls.map(([e]) => e)).toEqual([501, 502, 503]);
-    expect(spawner.netIds(entities as NonNullable<typeof entities>)).toEqual({
+    expect(spawner.netIds(entities)).toEqual({
       vehicle: 1501,
       board: 1502,
       driver: 1503,
@@ -61,13 +69,14 @@ describe('BoardSpawner (#310: board entities created by the server)', () => {
 
   it('creates nothing without a ped', async () => {
     const { natives, spawner } = world({ ped: 0 });
-    expect(await spawner.spawn(1)).toBeNull();
+    expect(await spawner.spawn(1)).toEqual({ ok: false, failed: 'ped' });
     expect(natives.createVehicle).not.toHaveBeenCalled();
   });
 
   it('deletes what it created when an entity never gets an owner', async () => {
     const { natives, alive, spawner } = world({ ownerAfter: { driver: Number.POSITIVE_INFINITY } });
-    expect(await spawner.spawn(1)).toBeNull();
+    expect(await spawner.spawn(1)).toEqual({ ok: false, failed: 'driver' });
+    expect(natives.seat).not.toHaveBeenCalled();
     expect(natives.sleep.mock.calls.length).toBeGreaterThanOrEqual(SPAWN_TIMEOUT_MS / 50);
     expect(natives.remove.mock.calls.map(([e]) => e).sort()).toEqual([501, 502, 503]);
     expect(alive.size).toBe(0);
@@ -76,7 +85,7 @@ describe('BoardSpawner (#310: board entities created by the server)', () => {
   it('stops at a failed creation and deletes the vehicle already made', async () => {
     const { natives, alive, spawner } = world();
     natives.createBoard.mockReturnValueOnce(0);
-    expect(await spawner.spawn(1)).toBeNull();
+    expect(await spawner.spawn(1)).toEqual({ ok: false, failed: 'board' });
     expect(natives.createDriver).not.toHaveBeenCalled();
     expect(natives.remove).toHaveBeenCalledWith(501);
     expect(alive.size).toBe(0);
@@ -84,8 +93,9 @@ describe('BoardSpawner (#310: board entities created by the server)', () => {
 
   it('despawn deletes the three entities, skipping those already gone', async () => {
     const { natives, spawner } = world();
-    const entities = await spawner.spawn(1);
-    if (!entities) throw new Error('not spawned');
+    const result = await spawner.spawn(1);
+    if (!('entities' in result)) throw new Error('not spawned');
+    const { entities } = result;
     natives.remove(entities.driver); // the server already cleaned it up
     natives.remove.mockClear();
     spawner.despawn(entities);
