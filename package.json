@@ -21,8 +21,8 @@
 	},
 	"bugs": "https://github.com/Heritage-RP/hrp-skating/issues",
 	"devDependencies": {
-		"@citizenfx/client": "latest",
-		"@citizenfx/server": "latest",
+		"@citizenfx/client": "2.0.37175-1",
+		"@citizenfx/server": "2.0.37175-1",
 		"@communityox/fx-utils": "^0.0.4",
 		"@jgoz/esbuild-plugin-typecheck": "^4.0.3",
 		"@types/node": "^22.13.9",
@@ -32,7 +32,7 @@
 	},
 	"dependencies": {
 		"@biomejs/biome": "^1.9.4",
-		"@communityox/ox_lib": "latest",
+		"@communityox/ox_lib": "3.32.3",
 		"@heritage-rp/lib": "git+ssh://git@github.com/Heritage-RP/hrp-lib.git#semver:^1.0.0"
 	}
 }
