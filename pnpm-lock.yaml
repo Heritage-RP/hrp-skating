@@ -12,17 +12,17 @@ importers:
         specifier: ^1.9.4
         version: 1.9.4
       '@communityox/ox_lib':
-        specifier: latest
+        specifier: 3.32.3
         version: 3.32.3
       '@heritage-rp/lib':
         specifier: git+ssh://git@github.com/Heritage-RP/hrp-lib.git#semver:^1.0.0
         version: git+https://git@github.com:Heritage-RP/hrp-lib.git#40b13d208982828d7e88f7d166c94b58e5633d38(@communityox/ox_lib@3.32.3)
     devDependencies:
       '@citizenfx/client':
-        specifier: latest
+        specifier: 2.0.37175-1
         version: 2.0.37175-1
       '@citizenfx/server':
-        specifier: latest
+        specifier: 2.0.37175-1
         version: 2.0.37175-1
       '@communityox/fx-utils':
         specifier: ^0.0.4
