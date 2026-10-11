@@ -5,8 +5,8 @@
 
 import Config from '@common/config';
 import { EVENT } from '@common/events';
-import { log } from '@common/log';
 import { DRIVER_MODEL, MODEL_NAME } from '@common/skate';
+import { log } from '@heritage-rp/lib/log';
 import { BoardSpawner, type EntityNatives } from './entities';
 import { type BoardInventory, type PendingBoards, SkatingService } from './service';
 

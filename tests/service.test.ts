@@ -1,4 +1,4 @@
-import { log } from '@common/log';
+import { log } from '@heritage-rp/lib/log';
 import { describe, expect, it, vi } from 'vitest';
 import type { BoardEntities } from '../src/server/entities';
 import { type BoardInventory, type BoardWorld, type PendingBoards, SkatingService } from '../src/server/service';

@@ -1,5 +1,5 @@
 import type { BoardNetIds } from '@common/events';
-import type { Logger } from '@common/log';
+import type { Logger } from '@heritage-rp/lib/log';
 import type { BoardEntities } from './entities';
 
 /** Inventory operations on the skateboard item (ox_inventory in game, a fake in tests). */
