@@ -31,6 +31,8 @@ const pending: PendingBoards = {
 
 /** Ped type given to the invisible driver (as in the original CreatePed). */
 const DRIVER_PED_TYPE = 12;
+/** Driver's seat (eSeatPosition SF_FRONT_DRIVER_SIDE). */
+const DRIVER_SEAT = -1;
 /** Orphan mode 0: the server deletes the entity once no longer relevant (owner gone) — a leftover never stays. */
 const DELETE_WHEN_NOT_RELEVANT = 0;
 
@@ -45,7 +47,10 @@ const natives: EntityNatives = {
   createVehicle: (x, y, z, heading) =>
     CreateVehicleServerSetter(GetHashKey(MODEL_NAME.vehicle), 'bike', x, y, z, heading),
   createBoard: (x, y, z) => CreateObjectNoOffset(GetHashKey(MODEL_NAME.board), x, y, z, true, true, false),
-  createDriver: (vehicle) => CreatePedInsideVehicle(vehicle, DRIVER_PED_TYPE, DRIVER_MODEL, -1, true, false),
+  // CREATE_PED (with a position) rather than CREATE_PED_INSIDE_VEHICLE, which FXServer routes to the first connected
+  // client instead of the closest one (see entities.ts)
+  createDriver: (x, y, z, heading) => CreatePed(DRIVER_PED_TYPE, DRIVER_MODEL, x, y, z, heading, true, false),
+  seat: (driver, vehicle) => SetPedIntoVehicle(driver, vehicle, DRIVER_SEAT),
   exists: (entity) => entity !== 0 && DoesEntityExist(entity),
   owner: (entity) => NetworkGetEntityOwner(entity),
   netId: (entity) => NetworkGetNetworkIdFromEntity(entity),

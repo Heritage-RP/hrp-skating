@@ -17,7 +17,20 @@ export interface BoardEntities {
   driver: number;
 }
 
-/** Server natives used to spawn the board (FiveM in game, a fake in tests). */
+/** Which entity could not be created (or never got an owner): `ped` = the player has no ped. */
+export type SpawnStage = 'ped' | 'vehicle' | 'board' | 'driver';
+
+export type SpawnResult = { ok: true; entities: BoardEntities } | { ok: false; failed: SpawnStage };
+
+/**
+ * Server natives used to spawn the board (FiveM in game, a fake in tests).
+ *
+ * The board prop and the driver come from server RPC natives (CREATE_OBJECT_NO_OFFSET, CREATE_PED): FXServer has a
+ * client create them, the one closest to the 3 floats of the call. CREATE_PED_INSIDE_VEHICLE has no position: FXServer
+ * sends it to the *first* connected client (citizen-server-impl ServerRPC.cpp, "if no pos-style argument, route to
+ * first client we find"), which may be far away without the BMX — with several players online the driver was never
+ * created (beta test 2026-10-11). The driver is created at the BMX and seated afterwards.
+ */
 export interface EntityNatives {
   /** The player's ped, 0 when none. */
   pedOf(src: number): number;
@@ -25,7 +38,10 @@ export interface EntityNatives {
   heading(entity: number): number;
   createVehicle(x: number, y: number, z: number, heading: number): number;
   createBoard(x: number, y: number, z: number): number;
-  createDriver(vehicle: number): number;
+  /** The driver, created at the BMX's position (routed to the closest client: the rider). */
+  createDriver(x: number, y: number, z: number, heading: number): number;
+  /** Seats the driver on the BMX (SET_PED_INTO_VEHICLE, run by the driver's owner); the client checks it again. */
+  seat(driver: number, vehicle: number): void;
   exists(entity: number): boolean;
   /** Owner's server id, -1 while no client owns it. */
   owner(entity: number): number;
@@ -48,12 +64,12 @@ export class BoardSpawner {
 
   /**
    * Creates the BMX, the board prop and the driver in front of `src`'s ped and waits until each exists and has an owner.
-   * Returns null (nothing left behind) when the ped is missing or an entity never shows up.
+   * Fails (nothing left behind) when the ped is missing or an entity never shows up, naming the entity.
    */
-  async spawn(src: number): Promise<BoardEntities | null> {
+  async spawn(src: number): Promise<SpawnResult> {
     const n = this.natives;
     const ped = n.pedOf(src);
-    if (ped === 0 || !n.exists(ped)) return null;
+    if (ped === 0 || !n.exists(ped)) return { ok: false, failed: 'ped' };
 
     const [px, py, pz] = n.coords(ped);
     const heading = n.heading(ped);
@@ -67,17 +83,19 @@ export class BoardSpawner {
       return true;
     };
 
-    const vehicle = n.createVehicle(x, y, pz, heading);
-    if (await ready(vehicle)) {
-      const board = n.createBoard(x, y, pz);
-      if (await ready(board)) {
-        const driver = n.createDriver(vehicle);
-        if (await ready(driver)) return { vehicle, board, driver };
-      }
-    }
+    const fail = (failed: SpawnStage): SpawnResult => {
+      for (const entity of created) this.remove(entity);
+      return { ok: false, failed };
+    };
 
-    for (const entity of created) this.remove(entity);
-    return null;
+    const vehicle = n.createVehicle(x, y, pz, heading);
+    if (!(await ready(vehicle))) return fail('vehicle');
+    const board = n.createBoard(x, y, pz);
+    if (!(await ready(board))) return fail('board');
+    const driver = n.createDriver(x, y, pz, heading);
+    if (!(await ready(driver))) return fail('driver');
+    n.seat(driver, vehicle);
+    return { ok: true, entities: { vehicle, board, driver } };
   }
 
   netIds(entities: BoardEntities): BoardNetIds {

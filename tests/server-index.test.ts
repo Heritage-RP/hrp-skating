@@ -56,7 +56,8 @@ Object.assign(g, {
   GetEntityHeading: () => 0,
   CreateVehicleServerSetter: vi.fn(created),
   CreateObjectNoOffset: vi.fn(created),
-  CreatePedInsideVehicle: vi.fn(created),
+  CreatePed: vi.fn(created),
+  SetPedIntoVehicle: vi.fn(),
   DoesEntityExist: (entity: number) => entity === 42 || alive.has(entity),
   NetworkGetEntityOwner: () => 1,
   NetworkGetNetworkIdFromEntity: (entity: number) => entity * 2,
@@ -106,7 +107,10 @@ describe('hrp-skating server', () => {
     expect(await useBoard(1)).toBe(false); // ox_inventory's own flow cancelled
     expect(ox_inventory.RemoveItem).toHaveBeenCalledWith(1, 'skateboard', 1, undefined, 3);
     expect(g.CreateVehicleServerSetter).toHaveBeenCalledWith(3, 'bike', expect.any(Number), 2, 10, 0);
-    expect(g.CreatePedInsideVehicle).toHaveBeenCalledWith(alive.values().next().value, 12, 68070371, -1, true, false);
+    // CREATE_PED with the BMX's position (FXServer sends CREATE_PED_INSIDE_VEHICLE to the first client, not the rider)
+    expect(g.CreatePed).toHaveBeenCalledWith(12, 68070371, expect.any(Number), 2, 10, 0, true, false);
+    const [bmx, , ped] = [...alive];
+    expect(g.SetPedIntoVehicle).toHaveBeenCalledWith(ped, bmx, -1);
     expect(g.SetEntityIgnoreRequestControlFilter).toHaveBeenCalledTimes(3);
     const [vehicle, board, driver] = [...alive];
     expect(g.emitNet).toHaveBeenCalledWith('astudios-skating:client:start', 1, {
