@@ -14,6 +14,9 @@ importers:
       '@communityox/ox_lib':
         specifier: latest
         version: 3.32.3
+      '@heritage-rp/lib':
+        specifier: git+ssh://git@github.com/Heritage-RP/hrp-lib.git#semver:^1.0.0
+        version: git+https://git@github.com:Heritage-RP/hrp-lib.git#40b13d208982828d7e88f7d166c94b58e5633d38(@communityox/ox_lib@3.32.3)
     devDependencies:
       '@citizenfx/client':
         specifier: latest
@@ -545,6 +548,12 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@heritage-rp/lib@git+https://git@github.com:Heritage-RP/hrp-lib.git#40b13d208982828d7e88f7d166c94b58e5633d38':
+    resolution: {commit: 40b13d208982828d7e88f7d166c94b58e5633d38, repo: git@github.com:Heritage-RP/hrp-lib.git, type: git}
+    version: 1.0.0
+    peerDependencies:
+      '@communityox/ox_lib': ^3.30.0
 
   '@jgoz/esbuild-plugin-typecheck@4.0.5':
     resolution: {integrity: sha512-yXC/6Kzcq/PAPdHFPFkqkfzw+qz/ZCyxntTGMk7CnAz1tFjv2vQuavVYIxsql5+eZetlJFM2ssPRYFtbKZGQ8w==}
@@ -1347,6 +1356,10 @@ snapshots:
 
   '@esbuild/win32-x64@0.25.12':
     optional: true
+
+  '@heritage-rp/lib@git+https://git@github.com:Heritage-RP/hrp-lib.git#40b13d208982828d7e88f7d166c94b58e5633d38(@communityox/ox_lib@3.32.3)':
+    dependencies:
+      '@communityox/ox_lib': 3.32.3
 
   '@jgoz/esbuild-plugin-typecheck@4.0.5(esbuild@0.25.12)(typescript@5.9.3)':
     dependencies:

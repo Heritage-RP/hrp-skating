@@ -6,9 +6,9 @@
 import Config from '@common/config';
 import { type BoardNetIds, EVENT, isBoardNetIds } from '@common/events';
 import Locale from '@common/locale';
-import { log } from '@common/log';
 import { ACTION, CONTROL, JumpTracker, type Movement, driveOrder, isRiderDown, shouldFall } from '@common/skate';
 import { initLocale, notify, requestAnimDict, requestModel, sleep } from '@communityox/ox_lib/client';
+import { log } from '@heritage-rp/lib/log';
 import { MODEL, Skateboard } from './board';
 
 initLocale(Config.locale);
