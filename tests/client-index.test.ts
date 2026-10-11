@@ -161,8 +161,8 @@ describe('hrp-skating client', () => {
     await waitGame(50);
     const [d0, c0] = [drives(), collisions()];
     await waitGame(400); // held: more than the 250 ms of a full jump
-    expect(drives() - d0).toBeGreaterThan(5); // the loop kept driving…
-    expect(collisions() - c0).toBeGreaterThan(5); // …and checking falls
+    // Loop turns are counted, not timed: a busy machine (a deploy building every resource) runs fewer turns in 400 ms.
+    await waitUntil(() => drives() - d0 > 5 && collisions() - c0 > 5, 'loop kept driving and checking falls');
     expect(spy('SetEntityVelocity')).not.toHaveBeenCalled();
 
     pressed.delete(CONTROL.jump);
