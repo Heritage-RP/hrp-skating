@@ -1,11 +1,13 @@
 /**
  * Client ride loop with faked natives: entities taken from the server's net ids (#310), Space held without blocking
- * the loop, board put away when downed and at a character change (#313). src/client/index.ts is bundled like
- * scripts/build.js does and run in a VM context whose globals are the fakes; game time runs SPEED× faster than real
- * time so the animations' waits stay short.
+ * the loop, board put away when downed and at a character change (#313), E to get on / off and the ox_target option
+ * to pick the board up with hrp-interact held off meanwhile (PRODUCTION-SERVER#414). src/client/index.ts is bundled
+ * like scripts/build.js does and run in a VM context whose globals are the fakes; game time runs SPEED× faster than
+ * real time so the animations' waits stay short.
  */
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { CONTROL } from '@common/skate';
 import { buildSync } from 'esbuild';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -13,7 +15,15 @@ const SPEED = 20;
 const PED = 1;
 const IDS = { vehicle: 101, board: 102, driver: 103 };
 const ENTITY = { vehicle: 1101, board: 1102, driver: 1103 };
-const CONTROL = { jump: 22, mount: 113 };
+const PICKUP_TARGET = 'hrp-skating:pickup';
+
+interface TargetOption {
+  name: string;
+  label: string;
+  distance: number;
+  canInteract: () => boolean;
+  onSelect: () => void;
+}
 
 const realSetTimeout = setTimeout;
 const t0 = performance.now();
@@ -42,6 +52,7 @@ const natives: Record<string, unknown> = {
   IsEntityInAir: () => false,
   IsControlPressed: (_group: number, control: number) => pressed.has(control),
   IsControlJustPressed: () => false,
+  GetResourceState: () => 'started',
   IsControlJustReleased: (_group: number, control: number) => justReleased.delete(control),
   HasEntityCollidedWithAnything: () => false,
   IsPedDeadOrDying: () => false,
@@ -63,7 +74,11 @@ const g: Record<string, unknown> = {
   GetGameName: () => 'fivem',
   LoadResourceFile: (_resource: string, path: string) => readFileSync(path, 'utf8'),
   LocalPlayer: localPlayer,
-  exports: { ox_lib: { notify: vi.fn(), getLocaleKey: () => 'en', cache: () => false } },
+  exports: {
+    ox_lib: { notify: vi.fn(), getLocaleKey: () => 'en', cache: () => false },
+    ox_target: { addLocalEntity: vi.fn(), removeLocalEntity: vi.fn() },
+    'hrp-interact': { suspend: vi.fn(), resume: vi.fn() },
+  },
   on: (name: string, fn: (...args: unknown[]) => void) => handlers.set(name, fn),
   onNet: (name: string, fn: (...args: unknown[]) => void) => handlers.set(name, fn),
   emitNet: vi.fn(),
@@ -85,6 +100,17 @@ function stubNatives(code: string): void {
 }
 
 const spy = (name: string) => g[name] as ReturnType<typeof vi.fn>;
+const exportSpy = (resource: string, name: string) =>
+  (g.exports as Record<string, Record<string, ReturnType<typeof vi.fn>>>)[resource][name];
+/** The « Ramasser la planche » option last offered to ox_target. */
+const pickupOption = (): TargetOption => {
+  const calls = exportSpy('ox_target', 'addLocalEntity').mock.calls;
+  const [entity, options] = calls[calls.length - 1] as [number, TargetOption[]];
+  expect(entity).toBe(ENTITY.board);
+  const option = options.find((o) => o.name === PICKUP_TARGET);
+  if (!option) throw new Error('no pickup option on the board');
+  return option;
+};
 const fire = (name: string, ...args: unknown[]) => handlers.get(name)?.(...args);
 
 async function waitUntil(cond: () => boolean, what: string, timeoutMs = 2000): Promise<void> {
@@ -116,6 +142,9 @@ beforeAll(() => {
 async function startAndMount(): Promise<void> {
   spy('emitNet').mockClear();
   spy('AttachEntityToEntity').mockClear();
+  spy('PlaceObjectOnGroundProperly').mockClear();
+  for (const name of ['suspend', 'resume']) exportSpy('hrp-interact', name).mockClear();
+  for (const name of ['addLocalEntity', 'removeLocalEntity']) exportSpy('ox_target', name).mockClear();
   fire('astudios-skating:client:start', IDS);
   await waitUntil(() => spy('PlaceObjectOnGroundProperly').mock.calls.length > 0, 'board put down');
   justReleased.add(CONTROL.mount);
@@ -174,6 +203,8 @@ describe('hrp-skating client', () => {
     localPlayer.state.isDowned = true;
     await waitUntil(gaveBack, 'item asked back');
     expect(spy('DetachEntity')).toHaveBeenCalledWith(PED, false, false);
+    expect(exportSpy('hrp-interact', 'resume')).toHaveBeenCalledWith('board');
+    expect(exportSpy('ox_target', 'removeLocalEntity')).toHaveBeenCalledWith(ENTITY.board, PICKUP_TARGET);
     localPlayer.state.isDowned = false;
   });
 
@@ -182,5 +213,55 @@ describe('hrp-skating client', () => {
     expect(gaveBack()).toBe(false);
     fire('ox:playerLogout');
     await waitUntil(gaveBack, 'item asked back');
+    expect(exportSpy('hrp-interact', 'resume')).toHaveBeenCalledWith('board');
+  });
+
+  it('gets on with E (38), never G (#414), and holds hrp-interact off while the board is out', async () => {
+    expect(CONTROL.mount).toBe(38);
+    expect(bundle).not.toMatch(/\bIsControl(Just)?(Pressed|Released)\(0, (113|47)\)/);
+    await startAndMount();
+    expect(exportSpy('hrp-interact', 'suspend')).toHaveBeenCalledWith('board');
+    expect(exportSpy('hrp-interact', 'resume')).not.toHaveBeenCalled();
+    // E again: off the board
+    spy('DetachEntity').mockClear();
+    justReleased.add(CONTROL.mount);
+    await waitUntil(() => spy('DetachEntity').mock.calls.some(([e]) => e === PED), 'rider off the board');
+    expect(gaveBack()).toBe(false);
+  });
+
+  it('offers « Ramasser la planche » on the board prop through ox_target, not while riding', async () => {
+    const option = pickupOption();
+    expect(option.label).toBe('Ramasser la planche'); // static/config.json locale: fr
+    expect(option.distance).toBe(1.5);
+    expect(option.canInteract()).toBe(true); // off the board (previous test)
+    justReleased.add(CONTROL.mount);
+    await waitUntil(() => !option.canInteract(), 'no pickup while riding');
+    justReleased.add(CONTROL.mount);
+    await waitUntil(() => option.canInteract(), 'pickup offered again once off');
+  });
+
+  it('picks the board up from the ox_target option: item back, option removed, hrp-interact resumed', async () => {
+    const option = pickupOption();
+    spy('AttachEntityToEntity').mockClear();
+    option.onSelect();
+    expect(option.canInteract()).toBe(false); // chosen once
+    await waitUntil(gaveBack, 'item asked back');
+    // The pickup animation holds the board in the hand before letting it go
+    expect(spy('AttachEntityToEntity')).toHaveBeenCalledWith(
+      ENTITY.vehicle,
+      PED,
+      expect.anything(),
+      ...[-0.1, 0, -0.2, 70, 0, 270, true, true, false, false, 2, true],
+    );
+    expect(exportSpy('ox_target', 'removeLocalEntity')).toHaveBeenCalledWith(ENTITY.board, PICKUP_TARGET);
+    expect(exportSpy('hrp-interact', 'resume')).toHaveBeenCalledWith('board');
+  });
+
+  it('resumes hrp-interact and drops the target option when the resource stops with a board out', async () => {
+    await startAndMount();
+    fire('onResourceStop', 'hrp-skating');
+    expect(exportSpy('ox_target', 'removeLocalEntity')).toHaveBeenCalledWith(ENTITY.board, PICKUP_TARGET);
+    expect(exportSpy('hrp-interact', 'resume')).toHaveBeenCalledWith('board');
+    await waitUntil(gaveBack, 'ride loop ended');
   });
 });

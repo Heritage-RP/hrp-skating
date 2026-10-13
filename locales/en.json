@@ -1,4 +1,5 @@
 {
   "title": "Skateboard",
-  "controls": "Press E to pick it up | Press G to get on"
+  "controls": "E to get on / off | Alt → Pick up the board",
+  "pickup": "Pick up the board"
 }

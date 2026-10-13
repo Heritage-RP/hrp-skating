@@ -1,4 +1,5 @@
 {
   "title": "Skateboard",
-  "controls": "E pour ramasser la planche | G pour monter dessus"
+  "controls": "E pour monter / descendre | Alt → Ramasser la planche",
+  "pickup": "Ramasser la planche"
 }

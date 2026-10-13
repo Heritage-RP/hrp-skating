@@ -4,9 +4,11 @@ Skateboard for Héritage RP — a fork of [astudios-skating](https://github.com/
 Studios), ported to TypeScript on [`hrp-typescript-template`](https://github.com/Heritage-RP/hrp-typescript-template)
 (Heritage-RP/PRODUCTION-SERVER#223).
 
-Use the `skateboard` item: the board is put down in front of you. <kbd>G</kbd> gets on / off, <kbd>W</kbd> <kbd>A</kbd>
-<kbd>S</kbd> <kbd>D</kbd> ride, <kbd>Space</kbd> jumps (held longer = higher), <kbd>E</kbd> picks the board up (back
-in the inventory). A dead owner's board is put away automatically.
+Use the `skateboard` item: the board is put down in front of you. <kbd>E</kbd> near the board gets on / off,
+<kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> ride, <kbd>Space</kbd> jumps (held longer = higher); the board
+is picked up (back in the inventory) through its ox_target option — <kbd>Alt</kbd> → « Ramasser la planche ». No
+<kbd>G</kbd>: it is the Interface Portative's flashlight (PRODUCTION-SERVER#414). While the board is out, hrp-interact's
+[E] prompts are held off (`suspend('board')` / `resume('board')`). A dead owner's board is put away automatically.
 
 ## How it works
 
@@ -19,7 +21,8 @@ in the inventory). A dead owner's board is put away automatically.
   to the character, KVP `owed:<charId>`, given at its next login), resource stop.
 - **Client** (`src/client/`): takes control of the three entities, makes the BMX and its driver invisible, attaches
   the board prop under the BMX and drives it (`TASK_VEHICLE_TEMP_ACTION`). Space is read once per loop turn
-  (`JumpTracker`), never awaited.
+  (`JumpTracker`), never awaited. `neighbours.ts`: the ox_target option on the board prop (`hrp-skating:pickup`) and
+  the hrp-interact suspension, both only when that resource is started.
 - **Common** (`src/common/skate.ts`): controls → driving action, jump, fall rules, spawn point — unit-tested.
 - **Tests** (`tests/`): pure rules, `SkatingService`, `BoardSpawner`, and both composition roots (`src/server/index.ts`,
   `src/client/index.ts`) bundled with esbuild and run in a VM with faked natives.
