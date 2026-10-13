@@ -1,8 +1,20 @@
 import { isBoardNetIds } from '@common/events';
-import { ACTION, JumpTracker, driveOrder, inFront, isRiderDown, jumpBoost, kmh, shouldFall } from '@common/skate';
+import { ACTION, CONTROL, JumpTracker, driveOrder, inFront, isRiderDown, jumpBoost, kmh, shouldFall } from '@common/skate';
 import { describe, expect, it } from 'vitest';
 
 const keys = (forward = false, backward = false, left = false, right = false) => ({ forward, backward, left, right });
+
+describe('CONTROL (PRODUCTION-SERVER#414 key map)', () => {
+  it('gets on / off with E and no longer uses G, the Interface Portative flashlight', () => {
+    expect(CONTROL.mount).toBe(38); // INPUT_PICKUP
+    expect(Object.values(CONTROL)).not.toContain(113); // INPUT_VEH_FLY_ATTACK_CAMERA (G)
+    expect(Object.values(CONTROL)).not.toContain(47); // INPUT_DETONATE (G)
+  });
+
+  it('has no pickup key: picking the board up is an ox_target option', () => {
+    expect(CONTROL).not.toHaveProperty('pickup');
+  });
+});
 
 describe('driveOrder', () => {
   it('does nothing without keys or above the speed cap', () => {

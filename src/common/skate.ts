@@ -1,13 +1,16 @@
 /** Pure skateboard rules (no natives): what the client loop decides each frame, unit-tested. */
 
-/** Control ids (https://docs.fivem.net/docs/game-references/controls/). */
+/**
+ * Control ids (https://docs.fivem.net/docs/game-references/controls/). G (113, INPUT_VEH_FLY_ATTACK_CAMERA) is no
+ * longer used: it is the Interface Portative's flashlight (PRODUCTION-SERVER#414). Picking the board up is an
+ * ox_target option on the board (Alt), not a key.
+ */
 export const CONTROL = {
   forward: 32, // INPUT_MOVE_UP_ONLY (W)
   backward: 33, // INPUT_MOVE_DOWN_ONLY (S)
   left: 34, // INPUT_MOVE_LEFT_ONLY (A)
   right: 35, // INPUT_MOVE_RIGHT_ONLY (D)
-  pickup: 38, // INPUT_PICKUP (E)
-  mount: 113, // INPUT_VEH_FLY_ATTACK_CAMERA (G)
+  mount: 38, // INPUT_PICKUP (E): get on / off near the board
   jump: 22, // INPUT_JUMP (Space)
 } as const;
 

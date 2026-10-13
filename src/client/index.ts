@@ -10,6 +10,7 @@ import { ACTION, CONTROL, JumpTracker, type Movement, driveOrder, isRiderDown, s
 import { initLocale, notify, requestAnimDict, requestModel, sleep } from '@communityox/ox_lib/client';
 import { log } from '@heritage-rp/lib/log';
 import { MODEL, Skateboard } from './board';
+import { addPickupTarget, holdInteract, removePickupTarget } from './neighbours';
 
 initLocale(Config.locale);
 
@@ -24,7 +25,7 @@ const ANIM = {
   crouch: { dict: 'move_crouch_proto', name: 'idle_intro' },
 } satisfies Record<string, Anim>;
 
-/** Distance (m) under which the board can be picked up or got on. */
+/** Distance (m) under which the board can be picked up (ox_target option) or got on (E). */
 const REACH = 1.5;
 
 /** Loaded ahead: the server creates the entities (#310), this client streams them in sooner. */
@@ -62,6 +63,8 @@ let board: Skateboard | null = null;
 /** A ride is running (from the assets' loading until the item is given back). */
 let busy = false;
 let connected = false;
+/** « Ramasser la planche » chosen (ox_target): the ride loop picks the board up at its next turn. */
+let pickupRequested = false;
 let player = 0;
 /** Space held on the board: the jump is computed at the release, never awaited. */
 const jumpKey = new JumpTracker(Config.maxJumpHeight);
@@ -89,9 +92,19 @@ function connect(toggle: boolean): void {
   connected = toggle;
 }
 
+/** The board is out no more: its target option goes, hrp-interact gets its [E] prompts back. */
+function forget(current: Skateboard): void {
+  removePickupTarget(current.board);
+  holdInteract(false);
+  pickupRequested = false;
+}
+
 /** Lets go of the board; the item comes back (and the server deletes the entities) when the ride loop ends. */
 function clear(): void {
-  board?.release();
+  if (board) {
+    forget(board);
+    board.release();
+  }
   board = null;
   unloadAssets();
   connected = false;
@@ -101,11 +114,20 @@ function clear(): void {
 
 async function putDown(current: Skateboard): Promise<void> {
   const ped = PlayerPedId();
+  holdInteract(true);
   current.attachToHand(ped);
   playAnim(ped, ANIM.pickup);
   await sleep(800);
   DetachEntity(current.vehicle, false, true);
   PlaceObjectOnGroundProperly(current.vehicle);
+  addPickupTarget(current.board, {
+    label: Locale('pickup'),
+    distance: REACH,
+    canInteract: () => board === current && !connected && !pickupRequested,
+    onSelect: () => {
+      pickupRequested = true;
+    },
+  });
   notify({ title: Locale('title'), description: Locale('controls'), type: 'inform' });
 }
 
@@ -140,11 +162,13 @@ function jump(current: Skateboard): void {
 }
 
 async function handleKeys(current: Skateboard, distance: number): Promise<void> {
+  // ox_target already checked the distance when the option was chosen
+  if (pickupRequested) {
+    await pickUp(current);
+    return;
+  }
+
   if (distance <= REACH) {
-    if (IsControlJustPressed(0, CONTROL.pickup)) {
-      await pickUp(current);
-      return;
-    }
     if (IsControlJustReleased(0, CONTROL.mount)) {
       if (connected) connect(false);
       else if (!IsPedRagdoll(player)) {
@@ -247,6 +271,7 @@ on('ox:playerLogout', () => {
 on('onResourceStop', (resource: string) => {
   if (resource !== GetCurrentResourceName() || !board) return;
   DetachEntity(PlayerPedId(), false, false);
+  forget(board);
   board.release(); // the server deletes the entities on its own resource stop
   board = null;
 });
