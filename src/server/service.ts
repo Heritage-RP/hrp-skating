@@ -1,6 +1,7 @@
 import type { BoardNetIds } from '@common/events';
 import type { Logger } from '@heritage-rp/lib/log';
 import type { BoardEntities, SpawnResult } from './entities';
+import { type ReturnTrigger, skatingMetrics } from './metrics';
 
 /** Inventory operations on the skateboard item (ox_inventory in game, a fake in tests). */
 export interface BoardInventory {
@@ -54,8 +55,18 @@ export class SkatingService {
    * could not be created).
    */
   async useItem(src: number, slot: number | undefined, charId: number | null): Promise<BoardNetIds | null> {
-    if (charId === null || this.deployed.has(src)) return null;
-    if (!this.inventory.removeBoard(src, slot)) return null;
+    if (charId === null) {
+      skatingMetrics.use('no_character');
+      return null;
+    }
+    if (this.deployed.has(src)) {
+      skatingMetrics.use('duplicate');
+      return null;
+    }
+    if (!this.inventory.removeBoard(src, slot)) {
+      skatingMetrics.use('not_removed');
+      return null;
+    }
     const out: Deployed = { charId, entities: null };
     this.deployed.set(src, out);
     this.log.business.info('skateboard placed', { source: src, charId });
@@ -64,33 +75,40 @@ export class SkatingService {
     if (this.deployed.get(src) !== out) {
       // Given back while the entities were being created (logout, disconnection, resource stop)
       if ('entities' in spawned) this.world.despawn(spawned.entities);
+      skatingMetrics.boardCreated('entities' in spawned ? 'left' : spawned.failed);
+      skatingMetrics.use('left');
       return null;
     }
     if ('failed' in spawned) {
       this.log.warn('skateboard entities could not be created', { source: src, charId, failed: spawned.failed });
-      this.giveBack(src, 'skateboard returned (entities not created)');
+      skatingMetrics.boardCreated(spawned.failed);
+      skatingMetrics.use('no_entities');
+      this.giveBack(src, 'skateboard returned (entities not created)', null);
       return null;
     }
     out.entities = spawned.entities;
+    skatingMetrics.boardCreated('ok');
+    skatingMetrics.use('ok');
     return this.world.netIds(spawned.entities);
   }
 
   /** The board was picked up (or vanished): delete its entities and give it back to a player who has one out. */
   giveItem(src: number): void {
-    this.giveBack(src, 'skateboard picked up');
+    this.giveBack(src, 'skateboard picked up', 'pickup');
   }
 
   /**
    * The character logged out or the player left (crash, timeout): the board goes back to the character that took it
-   * out — into its inventory if ox_inventory still has it loaded, otherwise at its next login.
+   * out — into its inventory if ox_inventory still has it loaded, otherwise at its next login. `trigger` only names
+   * the event for the metrics (ox:playerLogout and playerDropped both come, the second finds nothing).
    */
-  returnOnLogout(src: number): void {
-    this.giveBack(src, 'skateboard returned on logout');
+  returnOnLogout(src: number, trigger: 'logout' | 'dropped' = 'logout'): void {
+    this.giveBack(src, 'skateboard returned on logout', trigger);
   }
 
   /** Resource stop: every board out goes back to its owner's inventory. */
   returnAll(): void {
-    for (const src of [...this.deployed.keys()]) this.giveBack(src, 'skateboard returned on resource stop');
+    for (const src of [...this.deployed.keys()]) this.giveBack(src, 'skateboard returned on resource stop', 'stop');
   }
 
   /**
@@ -99,12 +117,16 @@ export class SkatingService {
    */
   deliverPending(src: number, charId: number): number {
     let owed = this.pending.get(charId);
-    if (owed <= 0) return 0;
+    if (owed <= 0) {
+      skatingMetrics.delivery('none');
+      return 0;
+    }
     while (owed > 0 && this.inventory.addBoard(src)) {
       owed -= 1;
       this.log.business.info('skateboard owed given back', { source: src, charId });
     }
     this.pending.set(charId, owed);
+    skatingMetrics.delivery(owed > 0 ? 'retry' : 'ok');
     return owed;
   }
 
@@ -112,17 +134,26 @@ export class SkatingService {
     return this.deployed.has(src);
   }
 
-  private giveBack(src: number, message: string): void {
+  /** `trigger` null: the entities were never created (nothing deleted), the return is counted by `useItem`. */
+  private giveBack(src: number, message: string, trigger: ReturnTrigger | null): void {
     const out = this.deployed.get(src);
-    if (out === undefined) return;
+    if (out === undefined) {
+      if (trigger) skatingMetrics.return(trigger, 'no_board');
+      return;
+    }
     this.deployed.delete(src);
-    if (out.entities) this.world.despawn(out.entities);
+    if (out.entities) {
+      this.world.despawn(out.entities);
+      if (trigger) skatingMetrics.boardRemoved(trigger);
+    }
     const { charId } = out;
     if (this.inventory.addBoard(src)) {
       this.log.business.info(message, { source: src, charId });
+      if (trigger) skatingMetrics.return(trigger, 'ok');
       return;
     }
     this.pending.set(charId, this.pending.get(charId) + 1);
     this.log.business.warn('skateboard owed to its character (inventory unavailable)', { source: src, charId });
+    if (trigger) skatingMetrics.return(trigger, 'owed');
   }
 }
