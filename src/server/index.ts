@@ -8,6 +8,7 @@ import { EVENT } from '@common/events';
 import { DRIVER_MODEL, MODEL_NAME } from '@common/skate';
 import { log } from '@heritage-rp/lib/log';
 import { BoardSpawner, type EntityNatives } from './entities';
+import { skatingMetrics } from './metrics';
 import { type BoardInventory, type PendingBoards, SkatingService } from './service';
 
 /** Lua exports returning several values (`false, 'reason'`) reach JS as an array. */
@@ -80,10 +81,14 @@ const DELIVER_DELAY_MS = 1000;
 
 async function deliverPending(src: number, charId: number): Promise<void> {
   for (let attempt = 0; attempt < DELIVER_TRIES; attempt++) {
-    if (activeCharId(src) !== charId) return;
+    if (activeCharId(src) !== charId) {
+      skatingMetrics.delivery('left');
+      return;
+    }
     if (service.deliverPending(src, charId) === 0) return;
     await new Promise((resolve) => setTimeout(resolve, DELIVER_DELAY_MS));
   }
+  skatingMetrics.delivery('gave_up');
   log.business.warn('skateboard still owed after the login retries', { source: src, charId });
 }
 
@@ -103,7 +108,10 @@ interface InventoryRef {
 exports(
   'useSkateboardItem',
   (event: string, _item: unknown, inv: InventoryRef | undefined, slot: number | undefined) => {
-    if (event !== 'usingItem') return;
+    if (event !== 'usingItem') {
+      skatingMetrics.use('ignored');
+      return;
+    }
     const src = inv?.id;
     if (typeof src === 'number') {
       service
@@ -111,7 +119,12 @@ exports(
         .then((netIds) => {
           if (netIds) emitNet(EVENT.start, src, netIds);
         })
-        .catch((err) => log.error(err instanceof Error ? err : String(err)));
+        .catch((err) => {
+          skatingMetrics.use('failed');
+          log.error(err instanceof Error ? err : String(err));
+        });
+    } else {
+      skatingMetrics.use('no_player');
     }
     return false;
   },
@@ -124,11 +137,11 @@ onNet(EVENT.giveItem, () => {
 // Character change or disconnection (crash, timeout): the board goes back to the character that took it out, never to
 // the next one. ox_core emits ox:playerLogout from its own playerDropped handler; whichever comes first returns it.
 on('ox:playerLogout', (src: number) => {
-  service.returnOnLogout(Number(src));
+  service.returnOnLogout(Number(src), 'logout');
 });
 
 on('playerDropped', () => {
-  service.returnOnLogout(source);
+  service.returnOnLogout(source, 'dropped');
 });
 
 on('ox:playerLoaded', (src: number, _userId: number, charId: number) => {

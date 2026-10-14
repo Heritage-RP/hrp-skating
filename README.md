@@ -49,6 +49,21 @@ The item (`hrp_inventory` `data/items.lua`):
 	server = { export = 'hrp-skating.useSkateboardItem' } },
 ```
 
+## Metrics
+
+Prometheus counters through hrp-metrics (`@heritage-rp/lib/metrics`, server only, `src/server/metrics.ts`), for the
+useless-work audit of PRODUCTION-SERVER (`just waste`): `result="ok"` is work that served, any other value says why it
+did not. Labels never carry a player, a character or free text. The resource has no server loop: nothing to count as
+ticks (the client's ride loop is per frame, on the client).
+
+| Counter | Labels | `result` / `reason` values |
+|---------|--------|----------------------------|
+| `hrp_skating_uses_total` | `result` | `ok` (board put down); `ignored` (ox_inventory event other than `usingItem`), `no_player`, `no_character`, `duplicate` (a board already out), `not_removed` (ox_inventory kept the item), `no_entities` (entities not created, item given back), `left` (player gone while the entities were created), `failed` (exception) |
+| `hrp_skating_returns_total` | `trigger` (`pickup`, `logout`, `dropped`, `stop`), `result` | `ok` (back in the inventory); `owed` (inventory unavailable: given at the next login), `no_board` (nothing out — `ox:playerLogout` and `playerDropped` both fire, the second one finds nothing) |
+| `hrp_skating_deliveries_total` | `result` | one per attempt at login: `ok` (owed boards given), `none` (nothing owed: the KVP was read for nothing), `retry` (inventory not loaded yet), `left` (character changed meanwhile), `gave_up` (still owed after the retries) |
+| `hrp_skating_boards_created_total` | `result` | `ok`; the stage that failed: `ped` (player has no ped), `vehicle`, `board`, `driver`; `left` (created, but the player had gone: deleted at once) |
+| `hrp_skating_boards_removed_total` | `reason` | `pickup`, `logout`, `dropped`, `stop` |
+
 ## Build
 
 ```bash
