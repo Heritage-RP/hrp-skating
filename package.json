@@ -33,6 +33,6 @@
 	"dependencies": {
 		"@biomejs/biome": "^1.9.4",
 		"@communityox/ox_lib": "3.32.3",
-		"@heritage-rp/lib": "git+ssh://git@github.com/Heritage-RP/hrp-lib.git#semver:^1.0.0"
+		"@heritage-rp/lib": "git+ssh://git@github.com/Heritage-RP/hrp-lib.git#main"
 	}
 }
