@@ -1,0 +1,40 @@
+{
+  "bounties": [
+    {
+      "id": "skateboard",
+      "version": 1,
+      "title": "Skateboard",
+      "summary": "Poser la planche, rouler, sauter, la ramasser (hrp-skating — #6, #29, #97).",
+      "steps": [
+        "Le kit du test vous donne un skateboard.",
+        "Utilisez-le depuis l'inventaire : la planche se pose devant vous.",
+        "G pour monter dessus, roulez, sautez (maintenez la touche de saut pour sauter plus haut).",
+        "Tombez volontairement (mur, pente) : vous devez chuter sans rester bloqué.",
+        "E pour ramasser la planche : elle doit revenir dans l'inventaire, une seule fois (pas de duplication)."
+      ],
+      "resources": ["hrp-skating"],
+      "reward": 15,
+      "timeLimitMinutes": 20,
+      "kit": {
+        "items": [
+          {"name": "skateboard", "count": 1}
+        ]
+      },
+      "objectives": [
+        { "id": "placed", "label": "Planche posée", "log": { "resource": "hrp-skating", "msg": "skateboard placed" } },
+        { "id": "ride", "label": "Monté dessus", "log": { "resource": "hrp-skating", "msg": "got on the skateboard", "side": "client" } },
+        {
+          "id": "jump",
+          "label": "Saut",
+          "optional": true,
+          "log": { "resource": "hrp-skating", "msg": "skateboard jump", "side": "client" }
+        },
+        {
+          "id": "picked",
+          "label": "Planche ramassée",
+          "log": { "resource": "hrp-skating", "msg": "skateboard picked up" }
+        }
+      ]
+    }
+  ]
+}
