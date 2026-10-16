@@ -52,6 +52,7 @@ createBuilder(
       dependencies: ['/server:13068', '/onesync', 'ox_lib', 'ox_inventory'],
       metadata: {
         description: luaString(pkg.description),
+        hrp_bounty_file: 'bounties.json',
         node_version: '22',
       },
     });
