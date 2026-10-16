@@ -149,7 +149,10 @@ on('ox:playerLoaded', (src: number, _userId: number, charId: number) => {
 });
 
 on('onResourceStart', (resource: string) => {
-  if (resource !== GetCurrentResourceName() || !oxCoreStarted()) return;
+  if (resource !== GetCurrentResourceName()) return;
+  // No board survives a restart (every one went back on stop): the gauge starts again at 0
+  service.publishBoardsOut();
+  if (!oxCoreStarted()) return;
   const players = exports.ox_core.GetPlayers() as { source?: unknown; charId?: unknown }[] | undefined;
   for (const player of players ?? []) {
     if (typeof player.charId === 'number') deliverLater(Number(player.source), player.charId);

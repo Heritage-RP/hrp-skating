@@ -1,12 +1,33 @@
 /**
- * Metrics of hrp-skating (Prometheus, through hrp-metrics) — the "useless work" audit of PRODUCTION-SERVER
- * (`just waste`, hrp-docs dev/travail-inutile.md): every recurring piece of server work is counted with its `result`,
- * `ok` when it served, otherwise why it did not. Label values are short, stable tokens from the code — never a player,
- * a character or free text.
+ * Metrics of hrp-skating (Prometheus, through hrp-metrics).
+ *
+ * Business metrics measure the game as players live it (boards out in the world, how long a board stays out) — no
+ * `result` label, only what happened. Work counters serve the "useless work" audit of PRODUCTION-SERVER (`just waste`,
+ * hrp-docs dev/travail-inutile.md): every recurring piece of server work is counted with its `result`, `ok` when it
+ * served, otherwise why it did not. Label values are short, stable tokens from the code — never a player, a character
+ * or free text.
  */
 
 import { metrics } from '@heritage-rp/lib/metrics';
 import type { SpawnStage } from './entities';
+
+/** Where a board's way back into the inventory came from (work counters) — and how a session ended (business). */
+export type ReturnTrigger = 'pickup' | 'logout' | 'dropped' | 'stop';
+
+// ─── Métier (business) ───────────────────────────────────────────────────────
+
+const boardsOut = metrics.gauge(
+  'hrp_skating_boards_out',
+  'Skateboards out in the world right now (entities created, not yet given back); set at every creation/removal and 0 at resource start',
+);
+const sessionSeconds = metrics.histogram(
+  'hrp_skating_session_seconds',
+  'How long a board stayed out, observed when it is taken back, by end (pickup, logout, dropped, stop)',
+  ['end'],
+  [30, 60, 120, 300, 600, 1800, 3600],
+);
+
+// ─── Work counters (waste) ───────────────────────────────────────────────────
 
 /** `useSkateboardItem` (ox_inventory `server.export`): a board put down, or why not. */
 export type UseResult =
@@ -25,8 +46,6 @@ export type UseResult =
   | 'left'
   | 'failed';
 
-/** Where a board's way back into the inventory came from. */
-export type ReturnTrigger = 'pickup' | 'logout' | 'dropped' | 'stop';
 /** `owed`: inventory unavailable, given at the next login; `no_board`: the player had none out (nothing to do). */
 export type ReturnResult = 'ok' | 'owed' | 'no_board';
 
@@ -63,6 +82,12 @@ const boardsRemoved = metrics.counter(
 );
 
 export const skatingMetrics = {
+  // business
+  /** Boards whose entities exist in the world right now. */
+  boardsOut: (count: number) => boardsOut.set(count),
+  /** A board taken back after `seconds` out, `end` = what took it back. */
+  session: (end: ReturnTrigger, seconds: number) => sessionSeconds.observe(seconds, { end }),
+  // work
   use: (result: UseResult) => uses.inc({ result }),
   return: (trigger: ReturnTrigger, result: ReturnResult) => returns.inc({ trigger, result }),
   delivery: (result: DeliveryResult) => deliveries.inc({ result }),
