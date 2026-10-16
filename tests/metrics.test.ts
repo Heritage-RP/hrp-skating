@@ -44,6 +44,14 @@ function stubMetrics(): Call[] {
 
 const increments = (calls: Call[]) => calls.filter(([method]) => method === 'incrementCounter');
 const labelsOf = (calls: Call[], name: string) => increments(calls).filter((c) => c[1] === name).map((c) => c[2]);
+/** Values given to the `hrp_skating_boards_out` gauge, in order (setGauge is (name, value, labels)). */
+const boardsOut = (calls: Call[]) =>
+  calls.filter(([method, name]) => method === 'setGauge' && name === 'hrp_skating_boards_out').map((c) => c[2]);
+/** Session observations as [end, seconds] (observeHistogram is (name, value, labels)). */
+const sessions = (calls: Call[]) =>
+  calls
+    .filter(([method, name]) => method === 'observeHistogram' && name === 'hrp_skating_session_seconds')
+    .map((c) => [(c[3] as unknown as Record<string, string>).end, c[2] as unknown as number]);
 
 function setup() {
   let nextEntity = 100;
@@ -72,8 +80,13 @@ function setup() {
     },
   };
   const quiet = { ...log, business: { ...log.business, info: () => undefined, warn: () => undefined } } as typeof log;
+  let now = 1_000_000;
   return {
-    service: new SkatingService(inventory, pending, world, quiet),
+    service: new SkatingService(inventory, pending, world, quiet, () => now),
+    /** Moves the service's clock forward. */
+    elapse: (ms: number) => {
+      now += ms;
+    },
     spawnFails: (result: SpawnResult) => {
       spawn = result;
     },
@@ -188,5 +201,89 @@ describe('metrics', () => {
   it('does nothing without hrp-metrics', () => {
     vi.unstubAllGlobals();
     expect(() => skatingMetrics.boardRemoved('stop')).not.toThrow();
+    expect(() => skatingMetrics.boardsOut(0)).not.toThrow();
+    expect(() => skatingMetrics.session('pickup', 12)).not.toThrow();
+  });
+});
+
+describe('business metrics', () => {
+  let calls: Call[];
+  beforeEach(() => {
+    calls = stubMetrics();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('publishes the boards out and a session with its end', () => {
+    skatingMetrics.boardsOut(2);
+    skatingMetrics.session('logout', 42.5);
+    expect(boardsOut(calls)).toEqual([2]);
+    expect(sessions(calls)).toEqual([['logout', 42.5]]);
+  });
+
+  it('the gauge follows every creation and removal of a board, the session lasts from the entities to the pickup', async () => {
+    const { service, elapse } = setup();
+    await service.useItem(1, 3, 10);
+    elapse(5_000);
+    await service.useItem(2, 3, 20);
+    expect(boardsOut(calls)).toEqual([1, 2]);
+    expect(service.boardsOut()).toBe(2);
+
+    elapse(90_000);
+    service.giveItem(1);
+    expect(boardsOut(calls)).toEqual([1, 2, 1]);
+    expect(sessions(calls)).toEqual([['pickup', 95]]);
+
+    elapse(10_000);
+    service.returnOnLogout(2, 'logout');
+    expect(boardsOut(calls)).toEqual([1, 2, 1, 0]);
+    expect(sessions(calls)).toEqual([
+      ['pickup', 95],
+      ['logout', 100],
+    ]);
+  });
+
+  it('ends: dropped and stop, counted whether or not the inventory took the board back', async () => {
+    const { service, elapse, inventoryAccepts } = setup();
+    await service.useItem(1, 3, 10);
+    await service.useItem(2, 3, 20);
+    elapse(30_000);
+    service.returnOnLogout(1, 'dropped');
+    inventoryAccepts(false);
+    elapse(30_000);
+    service.returnAll();
+    expect(sessions(calls)).toEqual([
+      ['dropped', 30],
+      ['stop', 60],
+    ]);
+    expect(boardsOut(calls).at(-1)).toBe(0);
+  });
+
+  it('a board whose entities were never created has no session and never counts as out', async () => {
+    const { service, spawnFails, elapse } = setup();
+    spawnFails({ ok: false, failed: 'vehicle' });
+    await service.useItem(1, 3, 10);
+    elapse(60_000);
+    service.returnOnLogout(1, 'logout');
+    expect(boardsOut(calls)).toEqual([]);
+    expect(sessions(calls)).toEqual([]);
+  });
+
+  it('publishBoardsOut sets the gauge from the state (0 at resource start)', () => {
+    const { service } = setup();
+    service.publishBoardsOut();
+    expect(boardsOut(calls)).toEqual([0]);
+  });
+
+  it('never publishes an end outside the return triggers', async () => {
+    const { service, elapse } = setup();
+    for (const src of [1, 2, 3, 4]) await service.useItem(src, 3, src * 10);
+    elapse(1_000);
+    service.giveItem(1);
+    service.returnOnLogout(2, 'logout');
+    service.returnOnLogout(3, 'dropped');
+    service.returnAll();
+    const ends = sessions(calls).map(([end]) => end);
+    expect(ends).toEqual(['pickup', 'logout', 'dropped', 'stop']);
+    for (const end of ends) expect(VALUES.has(end)).toBe(true);
   });
 });

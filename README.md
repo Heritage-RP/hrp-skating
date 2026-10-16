@@ -51,10 +51,20 @@ The item (`hrp_inventory` `data/items.lua`):
 
 ## Metrics
 
-Prometheus counters through hrp-metrics (`@heritage-rp/lib/metrics`, server only, `src/server/metrics.ts`), for the
-useless-work audit of PRODUCTION-SERVER (`just waste`): `result="ok"` is work that served, any other value says why it
-did not. Labels never carry a player, a character or free text. The resource has no server loop: nothing to count as
-ticks (the client's ride loop is per frame, on the client).
+Prometheus metrics through hrp-metrics (`@heritage-rp/lib/metrics`, server only, `src/server/metrics.ts`). Business
+metrics measure the game (boards out in the world, how long a board stays out — no `result` label, only what happened);
+work counters measure the server's work, for the useless-work audit of PRODUCTION-SERVER (`just waste`): `result="ok"`
+is work that served, any other value says why it did not. Labels never carry a player, a character or free text. The
+resource has no server loop: nothing to count as ticks (the client's ride loop is per frame, on the client).
+
+### Business
+
+| Metric | Labels | Meaning |
+|--------|--------|---------|
+| `hrp_skating_boards_out` (gauge) | — | Boards out in the world right now (entities created by the server, not yet given back). Set at every creation and removal of a board's entities, and 0 at resource start (every board goes back on stop). Lives in hrp-metrics' memory: after an hrp-metrics restart it is published again at the next change |
+| `hrp_skating_session_seconds` (histogram, buckets 30, 60, 120, 300, 600, 1800, 3600) | `end` (`pickup` picked up through ox_target, `logout` character change, `dropped` disconnection or crash, `stop` resource stop) | How long a board stayed out, from the creation of its entities to its return, observed at the return. A board whose entities were never created has no session; `hrp_skating_uses_total{result="ok"}` counts the boards put down |
+
+### Work counters
 
 | Counter | Labels | `result` / `reason` values |
 |---------|--------|----------------------------|

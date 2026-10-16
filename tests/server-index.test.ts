@@ -26,6 +26,17 @@ const ox_core = {
   GetPlayer: vi.fn((src: number) => (charIds.has(src) ? { charId: charIds.get(src) } : undefined)),
   GetPlayers: vi.fn(() => [...charIds].map(([source, charId]) => ({ source, charId }))),
 };
+/** hrp-metrics as @heritage-rp/lib/metrics calls it (GetResourceState says every resource is started). */
+const hrpMetrics = {
+  createCounter: vi.fn(),
+  createGauge: vi.fn(),
+  createHistogram: vi.fn(),
+  incrementCounter: vi.fn(),
+  setGauge: vi.fn(),
+  incrementGauge: vi.fn(),
+  decrementGauge: vi.fn(),
+  observeHistogram: vi.fn(),
+};
 const created = () => {
   nextEntity += 1;
   alive.add(nextEntity);
@@ -35,7 +46,7 @@ const created = () => {
 Object.assign(g, {
   exports: Object.assign(
     vi.fn((name: string, fn: (...args: unknown[]) => unknown) => registered.set(name, fn)),
-    { ox_inventory, ox_core },
+    { ox_inventory, ox_core, 'hrp-metrics': hrpMetrics },
   ),
   on: vi.fn((name: string, fn: (...args: unknown[]) => void) => handlers.set(name, fn)),
   onNet: vi.fn((name: string, fn: (...args: unknown[]) => void) => handlers.set(name, fn)),
@@ -181,5 +192,21 @@ describe('hrp-skating server', () => {
     fire('onResourceStop', 'hrp-skating');
     expect(ox_inventory.AddItem).toHaveBeenCalledTimes(2);
     expect(alive.size).toBe(0);
+  });
+
+  it('publishes the boards out: 0 at resource start, then every creation and removal, and a session at the return', async () => {
+    fire('onResourceStart', 'other-resource');
+    expect(hrpMetrics.setGauge).not.toHaveBeenCalled();
+    fire('onResourceStart', 'hrp-skating');
+    expect(hrpMetrics.setGauge).toHaveBeenCalledWith('hrp_skating_boards_out', 0, {});
+
+    charIds.set(1, 10);
+    await useBoard(1);
+    expect(hrpMetrics.setGauge).toHaveBeenLastCalledWith('hrp_skating_boards_out', 1, {});
+    fire('ox:playerLogout', 1);
+    expect(hrpMetrics.setGauge).toHaveBeenLastCalledWith('hrp_skating_boards_out', 0, {});
+    expect(hrpMetrics.observeHistogram).toHaveBeenCalledWith('hrp_skating_session_seconds', expect.any(Number), {
+      end: 'logout',
+    });
   });
 });

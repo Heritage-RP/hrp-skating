@@ -32,6 +32,8 @@ interface Deployed {
   charId: number;
   /** null while the entities are being created. */
   entities: BoardEntities | null;
+  /** When the entities were created (ms, `now()`): the start of the board's time out, 0 until then. */
+  placedAt: number;
 }
 
 /**
@@ -47,6 +49,8 @@ export class SkatingService {
     private readonly pending: PendingBoards,
     private readonly world: BoardWorld,
     private readonly log: Logger,
+    /** Clock (ms) behind the session durations; injectable for the tests. */
+    private readonly now: () => number = Date.now,
   ) {}
 
   /**
@@ -67,7 +71,7 @@ export class SkatingService {
       skatingMetrics.use('not_removed');
       return null;
     }
-    const out: Deployed = { charId, entities: null };
+    const out: Deployed = { charId, entities: null, placedAt: 0 };
     this.deployed.set(src, out);
     this.log.business.info('skateboard placed', { source: src, charId });
 
@@ -87,8 +91,10 @@ export class SkatingService {
       return null;
     }
     out.entities = spawned.entities;
+    out.placedAt = this.now();
     skatingMetrics.boardCreated('ok');
     skatingMetrics.use('ok');
+    this.publishBoardsOut();
     return this.world.netIds(spawned.entities);
   }
 
@@ -134,6 +140,18 @@ export class SkatingService {
     return this.deployed.has(src);
   }
 
+  /** Boards whose entities exist in the world right now. */
+  boardsOut(): number {
+    let count = 0;
+    for (const out of this.deployed.values()) if (out.entities) count += 1;
+    return count;
+  }
+
+  /** Publishes the `hrp_skating_boards_out` gauge (at resource start, and after every creation / removal). */
+  publishBoardsOut(): void {
+    skatingMetrics.boardsOut(this.boardsOut());
+  }
+
   /** `trigger` null: the entities were never created (nothing deleted), the return is counted by `useItem`. */
   private giveBack(src: number, message: string, trigger: ReturnTrigger | null): void {
     const out = this.deployed.get(src);
@@ -144,7 +162,11 @@ export class SkatingService {
     this.deployed.delete(src);
     if (out.entities) {
       this.world.despawn(out.entities);
-      if (trigger) skatingMetrics.boardRemoved(trigger);
+      this.publishBoardsOut();
+      if (trigger) {
+        skatingMetrics.boardRemoved(trigger);
+        skatingMetrics.session(trigger, Math.max(0, this.now() - out.placedAt) / 1000);
+      }
     }
     const { charId } = out;
     if (this.inventory.addBoard(src)) {
