@@ -48,11 +48,13 @@ createBuilder(
     await createFxmanifest({
       client_scripts: ['@hrp-metrics/lib/log.js', outfiles.client],
       server_scripts: ['@hrp-metrics/lib/log.js', outfiles.server],
-      files,
+      files: ['items.json', ...files],
       dependencies: ['/server:13068', '/onesync', 'ox_lib', 'ox_inventory'],
       metadata: {
         description: luaString(pkg.description),
         hrp_bounty_file: 'bounties.json',
+        // items of this resource, read by the inventory (PRODUCTION-SERVER#464)
+        hrp_inventory_items: 'items.json',
         node_version: '22',
       },
     });
