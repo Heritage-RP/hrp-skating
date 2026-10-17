@@ -42,11 +42,12 @@ skateboard`, `skateboard jump` (client, debug) — used by the hrp-bounty `skate
 | `maxJumpHeight` | `5` | Vertical boost of a full jump (key held 250 ms) |
 | `loseConnectionDistance` | `2` | Beyond this distance (m) the board brakes and stops answering the keys |
 
-The item (`hrp_inventory` `data/items.lua`):
+The item is declared by this resource in `items.json` (fxmanifest `hrp_inventory_items`, read by the hrp_inventory
+fork, PRODUCTION-SERVER#464), its image in `static/items/skateboard.png`:
 
-```lua
-['skateboard'] = { label = 'Skateboard', weight = 2000, stack = false, consume = 0,
-	server = { export = 'hrp-skating.useSkateboardItem' } },
+```json
+"skateboard": { "label": "Skateboard", "weight": 2000, "stack": false, "consume": 0,
+  "server": { "export": "hrp-skating.useSkateboardItem" } }
 ```
 
 ## Metrics
