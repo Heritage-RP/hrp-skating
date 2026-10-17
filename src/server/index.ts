@@ -104,6 +104,11 @@ interface InventoryRef {
  * ox_inventory calls it as (event, item, inventory, slot, data); with `consume = 0` only 'usingItem' is sent.
  * Returning false cancels ox_inventory's own use flow: the board is taken out of the slot by the service, its entities
  * created by the server, then the client puts it down.
+ * @param event - ox_inventory use stage; only `usingItem` puts a board down, any other stage is ignored
+ * @param {object} item - ox_inventory item data (unused)
+ * @param inv - the player's inventory (its `id` is the player's server id)
+ * @param slot - slot number of the skateboard
+ * @returns false on `usingItem` (ox_inventory's own use flow is cancelled, the board is handled here), undefined otherwise
  */
 exports(
   'useSkateboardItem',
