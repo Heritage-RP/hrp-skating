@@ -1,0 +1,26 @@
+{
+  "business": [
+    {
+      "name": "hrp_skating_uses_total",
+      "selector": "result=\"ok\""
+    },
+    {
+      "name": "hrp_skating_boards_out",
+      "kind": "gauge"
+    },
+    {
+      "name": "hrp_skating_session_seconds",
+      "kind": "histogram"
+    }
+  ],
+  "work": {
+    "useful": {
+      "hrp_skating_boards_removed_total": [
+        "dropped",
+        "logout",
+        "pickup",
+        "stop"
+      ]
+    }
+  }
+}
