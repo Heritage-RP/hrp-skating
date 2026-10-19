@@ -29,7 +29,9 @@ const realSetTimeout = setTimeout;
 const t0 = performance.now();
 const gameTime = () => Math.floor((performance.now() - t0) * SPEED);
 
-const handlers = new Map<string, (...args: unknown[]) => void>();
+// Several handlers per event, like FiveM's `on` (the bundled libraries listen to onResourceStop too)
+const handlers = new Map<string, ((...args: unknown[]) => void)[]>();
+const listen = (name: string, fn: (...args: unknown[]) => void) => handlers.set(name, [...(handlers.get(name) ?? []), fn]);
 const pressed = new Set<number>();
 const justReleased = new Set<number>();
 const alive = new Set<number>([PED, ENTITY.vehicle, ENTITY.board, ENTITY.driver]);
@@ -79,8 +81,8 @@ const g: Record<string, unknown> = {
     ox_target: { addLocalEntity: vi.fn(), removeLocalEntity: vi.fn() },
     'hrp-interact': { suspend: vi.fn(), resume: vi.fn() },
   },
-  on: (name: string, fn: (...args: unknown[]) => void) => handlers.set(name, fn),
-  onNet: (name: string, fn: (...args: unknown[]) => void) => handlers.set(name, fn),
+  on: listen,
+  onNet: listen,
   emitNet: vi.fn(),
   AddEventHandler: vi.fn(),
   // Not stubbed: src/common/log.ts falls back to its console logger
@@ -111,7 +113,9 @@ const pickupOption = (): TargetOption => {
   if (!option) throw new Error('no pickup option on the board');
   return option;
 };
-const fire = (name: string, ...args: unknown[]) => handlers.get(name)?.(...args);
+const fire = (name: string, ...args: unknown[]) => {
+  for (const handler of handlers.get(name) ?? []) handler(...args);
+};
 
 async function waitUntil(cond: () => boolean, what: string, timeoutMs = 2000): Promise<void> {
   const end = performance.now() + timeoutMs;
