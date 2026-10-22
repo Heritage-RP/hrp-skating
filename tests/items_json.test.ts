@@ -97,12 +97,12 @@ describe('items.json', () => {
     }
   });
 
-  it.each(items)('%s points at images that exist', (name, item) => {
+  it.each(items)('%s shows an image of this resource that exists', (name, item) => {
+    // every item has its icon in the images folder (PRODUCTION-SERVER#242: no empty slot in the inventory)
+    expect(file.images).toBeDefined();
     const image = item.client?.image;
-    if (file.images === undefined || (image && /^[a-z]+:\/\//.test(image))) return;
-    // an image named in the file must exist; `<name>.png` may still be missing (#242: an empty slot, as before)
-    if (image) expect(existsSync(join(root, file.images, image))).toBe(true);
-    else expect(name).toMatch(/^[a-z0-9_]+$/);
+    if (image && /^[a-z]+:\/\//.test(image)) return;
+    expect(existsSync(join(root, file.images ?? '', image ?? `${name}.png`))).toBe(true);
   });
 
   it('is named by the fxmanifest and readable by the client', () => {
