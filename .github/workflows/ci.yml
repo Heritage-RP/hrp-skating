@@ -1,0 +1,12 @@
+# Lint, types and build, tests on every pull request — the organisation's shared workflow (hrp-lib).
+# Needs the repository secret HRP_LIB_DEPLOY_KEY (it installs @heritage-rp/lib over SSH).
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  check:
+    uses: Heritage-RP/hrp-lib/.github/workflows/resource.yml@main
+    secrets:
+      HRP_LIB_DEPLOY_KEY: ${{ secrets.HRP_LIB_DEPLOY_KEY }}
